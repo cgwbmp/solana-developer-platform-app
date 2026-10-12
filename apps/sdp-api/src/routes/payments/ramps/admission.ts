@@ -1,4 +1,4 @@
-import type { PaymentTransferType, RampProviderId } from "@sdp/types";
+import type { PaymentTransferType, PersistedRampProviderId, RampProviderId } from "@sdp/types";
 import { getAuth } from "@/lib/auth";
 import { AppError } from "@/lib/errors";
 import {
@@ -21,7 +21,7 @@ export type RampAdmission =
       need: "cancel";
       transfer: {
         type: PaymentTransferType;
-        provider: RampProviderId | null;
+        provider: PersistedRampProviderId | null;
         custody_wallet_id: string | null;
       };
     };

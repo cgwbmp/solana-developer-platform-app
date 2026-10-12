@@ -224,7 +224,7 @@ describe("Counterparties Routes", () => {
   async function seedProviderAccount(input: {
     id: string;
     counterpartyId: string;
-    provider: "lightspark" | "mural";
+    provider: "lightspark" | "moonpay";
     providerCustomerReference: string;
     externalAccountReference: string | null;
     fiatCurrency: string;
@@ -2794,11 +2794,11 @@ describe("Counterparties Routes", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       });
       await seedProviderAccount({
-        id: "provider_account_included_mural",
+        id: "provider_account_included_moonpay",
         counterpartyId: owner.id,
-        provider: "mural",
-        providerCustomerReference: "mural_customer",
-        externalAccountReference: "mural_external",
+        provider: "moonpay",
+        providerCustomerReference: "moonpay_customer",
+        externalAccountReference: "moonpay_external",
         fiatCurrency: "GBP",
         destinationCountry: "GB",
         paymentRail: "FPS",
@@ -2807,10 +2807,10 @@ describe("Counterparties Routes", () => {
         createdAt: "2026-01-02T00:00:00.000Z",
       });
       const fetchSpy = vi.spyOn(globalThis, "fetch");
-      // Today every provider is `experimental`; these stages put only Mural in `beta`.
+      // Today every provider is `experimental`; these stages put only MoonPay in `beta`.
       const betaApp = createApp({
         observability: noopObservability,
-        rampProviderStages: { ...SDP_RAMP_PROVIDER_STAGES, mural: "beta" },
+        rampProviderStages: { ...SDP_RAMP_PROVIDER_STAGES, moonpay: "beta" },
       });
 
       const response = await betaApp.request(
@@ -2821,7 +2821,7 @@ describe("Counterparties Routes", () => {
 
       expect(response.status).toBe(200);
       const { accounts } = (await response.json()).data as { accounts: { id: string }[] };
-      expect(accounts.map((account) => account.id)).toEqual(["provider_account_included_mural"]);
+      expect(accounts.map((account) => account.id)).toEqual(["provider_account_included_moonpay"]);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -2842,11 +2842,11 @@ describe("Counterparties Routes", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       });
       await seedProviderAccount({
-        id: "provider_account_entitled_mural",
+        id: "provider_account_entitled_moonpay",
         counterpartyId: owner.id,
-        provider: "mural",
-        providerCustomerReference: "mural_customer_entitled",
-        externalAccountReference: "mural_external_entitled",
+        provider: "moonpay",
+        providerCustomerReference: "moonpay_customer_entitled",
+        externalAccountReference: null,
         fiatCurrency: "GBP",
         destinationCountry: "GB",
         paymentRail: "FPS",
@@ -2872,7 +2872,7 @@ describe("Counterparties Routes", () => {
       );
       expect(listed.status).toBe(200);
       const { accounts } = (await listed.json()).data as { accounts: { id: string }[] };
-      expect(accounts.map((account) => account.id)).toEqual(["provider_account_entitled_mural"]);
+      expect(accounts.map((account) => account.id)).toEqual(["provider_account_entitled_moonpay"]);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
 
@@ -2911,9 +2911,9 @@ describe("Counterparties Routes", () => {
       await seedProviderAccount({
         id: "provider_account_gbp_archived",
         counterpartyId: owner.id,
-        provider: "mural",
-        providerCustomerReference: "mural_customer",
-        externalAccountReference: "mural_external",
+        provider: "moonpay",
+        providerCustomerReference: "moonpay_customer",
+        externalAccountReference: "moonpay_external",
         fiatCurrency: "GBP",
         destinationCountry: "GB",
         paymentRail: "FPS",
@@ -3030,7 +3030,7 @@ describe("Counterparties Routes", () => {
           },
           {
             id: "provider_account_gbp_archived",
-            provider: "mural",
+            provider: "moonpay",
             kind: "payout_account",
             fiatCurrency: "GBP",
             destinationCountry: "GB",
@@ -3074,9 +3074,9 @@ describe("Counterparties Routes", () => {
       await seedProviderAccount({
         id: "provider_account_after_link",
         counterpartyId: owner.id,
-        provider: "mural",
-        providerCustomerReference: "mural_customer",
-        externalAccountReference: "mural_external",
+        provider: "moonpay",
+        providerCustomerReference: "moonpay_customer",
+        externalAccountReference: "moonpay_external",
         fiatCurrency: "GBP",
         destinationCountry: "GB",
         paymentRail: "FPS",
@@ -3115,7 +3115,7 @@ describe("Counterparties Routes", () => {
           },
           {
             id: "provider_account_after_link",
-            provider: "mural",
+            provider: "moonpay",
             kind: "payout_account",
             fiatCurrency: "GBP",
             destinationCountry: "GB",
