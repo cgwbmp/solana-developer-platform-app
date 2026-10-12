@@ -482,7 +482,7 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
 
     const availability = await readAvailability(
       "sandbox",
-      deploymentEnv({ SDP_RELEASE_CHANNEL: "beta" })
+      deploymentEnv({ SDP_RELEASE_CHANNEL: "stable" })
     );
 
     expect(availability.providers).toContainEqual({
