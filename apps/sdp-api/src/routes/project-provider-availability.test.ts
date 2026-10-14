@@ -106,9 +106,9 @@ const DEPLOYMENT_CREDENTIALS = {
   MOONPAY_SECRET_KEY: "moonpay_project_provider_availability_secret",
   MOONPAY_SANDBOX_API_KEY: "moonpay_sandbox_project_provider_availability_key",
   MOONPAY_SANDBOX_SECRET_KEY: "moonpay_sandbox_project_provider_availability_secret",
-  STRIPE_SECRET_KEY: "stripe_project_provider_availability_secret",
-  STRIPE_PUBLISHABLE_KEY: "stripe_project_provider_availability_publishable",
-  STRIPE_WEBHOOK_SECRET: "stripe_project_provider_availability_webhook",
+  STRIPE_SANDBOX_SECRET_KEY: "sk_test_project_provider_availability",
+  STRIPE_SANDBOX_PUBLISHABLE_KEY: "pk_test_project_provider_availability",
+  STRIPE_SANDBOX_WEBHOOK_SECRET: "whsec_project_provider_availability",
 } as const satisfies Partial<Env>;
 const SANDBOX_UNENTITLED_CUSTODY_MODES: CustodyUnavailableModes = [
   { mode: "managed", reason: "provider_not_entitled" },
@@ -278,7 +278,7 @@ const PRODUCTION_AVAILABILITY: ProjectProviderAvailability = {
     { family: "ramps", provider: "moonpay", available: true },
     { family: "ramps", provider: "bvnk", available: false, reason: "provider_not_configured" },
     { family: "ramps", provider: "coinbase", available: false, reason: "provider_not_configured" },
-    { family: "ramps", provider: "stripe", available: true },
+    { family: "ramps", provider: "stripe", available: false, reason: "provider_not_configured" },
     ...EARN_AVAILABILITY,
   ],
 };
@@ -631,6 +631,19 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
       family: "ramps",
       provider: "moonpay",
       available: true,
+    });
+  });
+
+  it("reports Stripe unavailable when a live key sits under the sandbox names", async () => {
+    const liveKey = deploymentEnv({ STRIPE_SANDBOX_SECRET_KEY: "sk_live_mounted_by_mistake" });
+
+    const sandbox = await readAvailability("sandbox", liveKey);
+
+    expect(sandbox.providers).toContainEqual({
+      family: "ramps",
+      provider: "stripe",
+      available: false,
+      reason: "provider_not_configured",
     });
   });
 
