@@ -344,6 +344,16 @@ declare module "hono" {
     organizationEntitlements: OrganizationEntitlements;
     // Set by requestGate middleware for gated routes
     requestGate?: RequestGateContext;
+    // Set by authorize(): what the route's access check loaded (middleware/authorize.ts)
+    authorized?: { loaded: unknown };
+    // Set by idempotent() when this request holds its key: the request's fingerprint
+    idempotencyFingerprint?: string;
+    // Set by idempotent() with the fingerprint: the key this request claimed
+    idempotencyClaimedKey?: string;
+    // Set by markIdempotencyCommitted() once the handler wrote its domain row
+    idempotencyCommitted?: boolean;
+    // Set by replayFromRecord when the key's domain row records another request
+    idempotencyRecordMismatch?: boolean;
     apiKey?: {
       id: string;
       organizationId: string;
