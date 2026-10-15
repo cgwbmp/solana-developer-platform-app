@@ -238,8 +238,8 @@ and Canada and links Ondo's eligibility page for the rest; re-read that page
 before changing the string or the inventory doc, and never shrink it back to
 "non-US persons only".
 Execution lives in `@sdp/ondo`; see that package's CLAUDE.md for why the
-primary mint/redeem facility is deliberately unused (Reg S lockup) and how the
-Jupiter trust boundary stays single-owner in the API.
+primary mint/redeem facility is deliberately unused (Ondo onboarding, no Solana
+entry point) and how the Jupiter trust boundary stays single-owner in the API.
 
 ## Two provider shapes — read this before assuming either model
 
