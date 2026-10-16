@@ -1,5 +1,5 @@
 import { compareDecimalAmounts } from "@sdp/payments/decimal";
-import { createClusterRpc } from "@sdp/rpc/factory";
+import { createClusterHistoryRpc, createClusterRpc } from "@sdp/rpc/factory";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { assertValidAddress } from "@sdp/solana/address";
 import { parseDecimalAmount } from "@sdp/solana/amount";
@@ -96,7 +96,6 @@ import {
 } from "../wallets";
 import {
   buildObservedTransfersForSignatures,
-  createSignatureHistoryRpc,
   dedupeSignatureHistory,
   MAX_TOKEN_ACCOUNT_SIGNATURE_LOOKUPS,
   resolveWalletTokenAccountAddresses,
@@ -1046,7 +1045,7 @@ export async function listTransfers(c: AppContext) {
       : null;
 
   if (observedTarget) {
-    // Helius-backed path: fetch on-chain signatures for the wallet address, then
+    // On-chain path: fetch signatures for the wallet address on the project's cluster, then
     // cross-reference with our DB. Append pending/processing/failed from DB (not on-chain yet).
     //
     // TODO: Replace getSignaturesForAddress with a dedicated indexer for production use.
@@ -1062,12 +1061,12 @@ export async function listTransfers(c: AppContext) {
       walletIdsByAddress,
     } = observedTarget;
 
-    // 1. Fetch on-chain signature history via Helius (or fallback RPC).
+    // 1. Fetch on-chain signature history.
     // The owner-address history, the wallet's token accounts, and the persisted
     // ledger query are independent reads, so they start together instead of
     // paying each round-trip serially; only the token-account signature sweeps
     // below need to wait for the token accounts.
-    const heliusRpc = createSignatureHistoryRpc(c.env);
+    const historyRpc = createClusterHistoryRpc();
     const ownerAddress = address(sourceAddress);
     const historyLimit = Math.min(pageSize * 5, 200);
     const signatureSearchAddresses: Address[] = [ownerAddress];
@@ -1095,11 +1094,11 @@ export async function listTransfers(c: AppContext) {
     });
 
     const [ownerSignatures, tokenAccountAddresses, persistedResult] = await Promise.all([
-      solanaRpc.getSignaturesForAddress(heliusRpc, ownerAddress, {
+      solanaRpc.getSignaturesForAddress(historyRpc, ownerAddress, {
         limit: historyLimit,
         commitment: "confirmed",
       }),
-      resolveWalletTokenAccountAddresses(c, heliusRpc, ownerAddress, resolvedWalletId),
+      resolveWalletTokenAccountAddresses(c, historyRpc, ownerAddress, resolvedWalletId),
       persistedResultPromise,
     ]);
 
@@ -1132,7 +1131,7 @@ export async function listTransfers(c: AppContext) {
       signatureSearchAddresses.slice(1),
       SIGNATURE_HISTORY_LOOKUP_CONCURRENCY,
       (searchAddress) =>
-        solanaRpc.getSignaturesForAddress(heliusRpc, searchAddress, {
+        solanaRpc.getSignaturesForAddress(historyRpc, searchAddress, {
           limit: historyLimit,
           commitment: "confirmed",
         })
@@ -1166,15 +1165,11 @@ export async function listTransfers(c: AppContext) {
     const missingObservedSignatures = onChainSigs.filter(
       (signatureInfo) => !persistedSignatures.has(String(signatureInfo.signature))
     );
-    const observedRows = await buildObservedTransfersForSignatures(
-      c.env,
-      missingObservedSignatures,
-      {
-        organizationId: auth.organizationId,
-        projectId: requireProjectId(c),
-        walletIdsByAddress,
-      }
-    );
+    const observedRows = await buildObservedTransfersForSignatures(missingObservedSignatures, {
+      organizationId: auth.organizationId,
+      projectId: requireProjectId(c),
+      walletIdsByAddress,
+    });
 
     // 4. Filter only synthetic observations; the repository already applied
     // the same filters to the authoritative exact ledger.
