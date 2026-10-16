@@ -2,7 +2,6 @@ import { NON_TERMINAL_RAMP_TRANSFER_STATUSES, type PaymentTransferStatus } from 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
-import { createTenantScope } from "@/lib/tenant-scope";
 import { TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
 import { seedTestCustodyRows } from "@/test/helpers/custody";
 import { env } from "@/test/helpers/env";
@@ -643,29 +642,6 @@ describe("PaymentsRepository.updateTransferStatusGuarded (postgres)", () => {
     expect(await readStatus("xfr_guard_org")).toBe("awaiting_payment");
   });
 
-  it("lets an organization-scoped repository read and update project transfers", async () => {
-    await seedTransfer({ id: "xfr_org_admin", status: "awaiting_payment" });
-    const scoped = createPostgresPaymentsRepository(
-      getDb(env),
-      createTenantScope({ organizationId: TEST_ORG.id, projectId: null })
-    );
-
-    await expect(
-      scoped.getTransferById({
-        transferId: "xfr_org_admin",
-        organizationId: TEST_ORG.id,
-        projectId: null,
-      })
-    ).resolves.toMatchObject({ id: "xfr_org_admin", project_id: TEST_PROJECT_ID });
-    await expect(
-      scoped.updateTransfer({
-        transferId: "xfr_org_admin",
-        status: "confirmed",
-        updatedAt: new Date().toISOString(),
-      })
-    ).resolves.toMatchObject({ id: "xfr_org_admin", status: "confirmed" });
-  });
-
   it("does not transition a transfer scoped to another project", async () => {
     await seedTransfer({ id: "xfr_guard_project", status: "awaiting_payment" });
     const transition = (projectId: string) =>
@@ -1042,7 +1018,12 @@ describe("PaymentsRepository.listTransfers token filter (postgres)", () => {
     return repo;
   }
 
-  const listArgs = { organizationId: TEST_ORG.id, projectId: null, limit: 50, offset: 0 };
+  const listArgs = {
+    organizationId: TEST_ORG.id,
+    projectId: TEST_PROJECT_ID,
+    limit: 50,
+    offset: 0,
+  };
 
   it("returns the mint rows and the symbol rows for one filter", async () => {
     const repo = await seedMixedForms();
@@ -1156,7 +1137,12 @@ describe("PaymentsRepository.listTransfers wallet allowlist (postgres)", () => {
     return repo;
   }
 
-  const listArgs = { organizationId: TEST_ORG.id, projectId: null, limit: 50, offset: 0 };
+  const listArgs = {
+    organizationId: TEST_ORG.id,
+    projectId: TEST_PROJECT_ID,
+    limit: 50,
+    offset: 0,
+  };
 
   it("matches nothing for an empty allowlist instead of dropping the filter", async () => {
     const repo = await seedTwoWallets();

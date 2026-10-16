@@ -1,4 +1,6 @@
 import { compareDecimalAmounts } from "@sdp/payments/decimal";
+import { createClusterRpc } from "@sdp/rpc/factory";
+import { currentClusterScope } from "@sdp/rpc/scope";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { assertValidAddress } from "@sdp/solana/address";
 import { parseDecimalAmount } from "@sdp/solana/amount";
@@ -107,7 +109,7 @@ async function createTransferRecord(
   c: AppContext,
   input: {
     organizationId: string;
-    projectId: string | null;
+    projectId: string;
     custodyWalletId: string;
     walletId: string;
     sourceAddress: string;
@@ -238,7 +240,7 @@ async function updateOnchainTransferForRamp(
   const tenant = {
     transferId: existing.id,
     organizationId: scope.auth.organizationId,
-    projectId: scope.auth.projectId,
+    projectId: requireProjectId(c),
   };
   // A provider the release channel leaves out is off completely: never fund its deposits.
   assertTransferRampProviderInChannel(c, existing);
@@ -308,14 +310,13 @@ export async function authorizeTransfer(
   // wallet is inactive and would refuse the replay of a transfer that ran.
   authorizeCustodyPaymentWallet(c, body.sourceCustodyWalletId, ["payments:write"]);
   const scope = await resolveScope(c, body.sourceCustodyWalletId);
-  assertPaymentProjectScope(body.projectId, scope.auth.projectId);
+  assertPaymentProjectScope(body.projectId, requireProjectId(c));
   const operation = resolveOutboundPaymentOperation({
     wallets: scope.wallets,
     sourceCustodyWalletId: body.sourceCustodyWalletId,
     destination: body.destination,
     token: body.token,
     amount: body.amount,
-    env: c.env,
   });
   // A ramp deposit the request funds is named by id: it must be in the
   // project before the key is claimed, so a wrong id is never stored as a 404.
@@ -324,7 +325,7 @@ export async function authorizeTransfer(
     rampTransfer = await getPaymentsRepository(c).getTransferById({
       transferId: body.transferId,
       organizationId: scope.auth.organizationId,
-      projectId: scope.auth.projectId,
+      projectId: requireProjectId(c),
     });
     if (!rampTransfer) throw notFound("Ramp transfer");
   }
@@ -395,7 +396,7 @@ export async function findTransferRecordReplay(
 
   const row = await getPaymentsRepository(c).findTransferByIdempotency({
     organizationId: scope.auth.organizationId,
-    projectId: scope.auth.projectId,
+    projectId: requireProjectId(c),
     idempotencyKey: recordKey,
   });
   if (row === null || row.idempotency_fingerprint === null) return null;
@@ -568,7 +569,7 @@ async function executeSponsoredTransfer(
     throw badRequest("Resolved signing wallet does not match source wallet");
   }
 
-  const rpc = solanaRpc.createRpc(c.env);
+  const rpc = createClusterRpc();
   const { blockhash, lastValidBlockHeight } = await solanaRpc.getRecentBlockhash(rpc, "confirmed");
   const feePayment = createSponsorshipFeePayment(
     c.env,
@@ -774,7 +775,7 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
       }
     : await createTransferRecord(c, {
         organizationId: scope.auth.organizationId,
-        projectId: scope.auth.projectId,
+        projectId: requireProjectId(c),
         custodyWalletId: operation.sourceWallet.id,
         walletId: operation.sourceWallet.walletId,
         sourceAddress: operation.sourceWallet.publicKey,
@@ -1001,7 +1002,9 @@ export async function listTransfers(c: AppContext) {
   const transferTypeSet = transferTypes ? new Set<TransferType>(transferTypes) : undefined;
   // Rows store mints, so a symbol or native-SOL filter must be normalized to
   // the same canonical mint before either the in-memory or SQL comparison.
-  const tokenFilter = token ? normalizePaymentToken(token, c.env) : undefined;
+  const tokenFilter = token
+    ? normalizePaymentToken(token, currentClusterScope().cluster)
+    : undefined;
   const hasProvider = provider !== undefined;
   const hasProviderReference = providerReference !== undefined;
   const hasExactProviderReference = hasProvider && hasProviderReference;
@@ -1030,7 +1033,7 @@ export async function listTransfers(c: AppContext) {
       provider,
       providerReference,
       organizationId: auth.organizationId,
-      projectId: auth.projectId,
+      projectId: requireProjectId(c),
     });
 
     if (row) assertTransferReadAccess(c, row);
@@ -1077,7 +1080,7 @@ export async function listTransfers(c: AppContext) {
     // can only push persisted rows later in the combined ordering.
     const persistedResultPromise = repo.listTransfers({
       organizationId: auth.organizationId,
-      projectId: auth.projectId,
+      projectId: requireProjectId(c),
       custodyWalletId: observedCustodyWalletId,
       counterpartyId,
       search,
@@ -1152,7 +1155,7 @@ export async function listTransfers(c: AppContext) {
     const persistedSignatureRows = await repo.listTransfersBySignatures({
       signatures: sigStrings,
       organizationId: auth.organizationId,
-      projectId: auth.projectId,
+      projectId: requireProjectId(c),
     });
     const scopedPersistedSignatureRows = persistedSignatureRows.filter(
       (row) => row.custody_wallet_id === observedCustodyWalletId
@@ -1171,7 +1174,7 @@ export async function listTransfers(c: AppContext) {
       missingObservedSignatures,
       {
         organizationId: auth.organizationId,
-        projectId: auth.projectId,
+        projectId: requireProjectId(c),
         walletIdsByAddress,
       }
     );
@@ -1213,7 +1216,7 @@ export async function listTransfers(c: AppContext) {
     const queryStartedAt = performance.now();
     const result = await repo.listTransfers({
       organizationId: auth.organizationId,
-      projectId: auth.projectId,
+      projectId: requireProjectId(c),
       custodyWalletId,
       walletAuthorization:
         custodyWalletId || walletAuthorization === null ? undefined : walletAuthorization,
@@ -1254,7 +1257,7 @@ export async function getTransfer(c: AppContext) {
   const row = await repo.getTransferById({
     transferId: params.data.transferId,
     organizationId: auth.organizationId,
-    projectId: auth.projectId,
+    projectId: requireProjectId(c),
   });
 
   if (!row) throw notFound("Transfer");
