@@ -8,6 +8,7 @@ import {
   RAMP_TRANSFER_TYPES,
   type RampTransferTransitionId,
   type RampTransferType,
+  type SdpEnvironment,
   WALLET_TRANSFER_TYPES,
 } from "@sdp/types";
 import type { PersistedRampProviderId, RampProviderId } from "@sdp/types/provider-access";
@@ -174,6 +175,8 @@ export interface ListTransfersInput {
 }
 
 export interface ListTransfersByStatusInput {
+  /** Only transfers whose project is in this environment, so one job run reads one cluster. */
+  environment: SdpEnvironment;
   statuses: PaymentTransferStatus[];
   types?: readonly PaymentTransferType[];
   hasSignature?: boolean;
@@ -330,10 +333,11 @@ export interface PaymentsRepository {
    * next: least-recently-polled first (never-polled rows first), bounded to
    * rows confirmed after the given floor. System-only.
    *
-   * @param params - The confirmed_at eligibility floor and the page size.
+   * @param params - The project environment, the confirmed_at eligibility floor and the page size.
    * @returns The next page of the finalization poll queue.
    */
   listConfirmedTransfersToPoll(params: {
+    environment: SdpEnvironment;
     confirmedAfter: string;
     limit: number;
   }): Promise<PaymentTransferRow[]>;
