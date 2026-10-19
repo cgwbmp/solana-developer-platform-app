@@ -26,7 +26,8 @@
       "correctness": {
         "noUnusedVariables": "error",
         "noUnusedImports": "error",
-        "useExhaustiveDependencies": "warn"
+        "useExhaustiveDependencies": "warn",
+        "noUnusedPrivateClassMembers": "error"
       },
       "suspicious": {
         "noExplicitAny": "error",
@@ -35,11 +36,14 @@
         "noConfusingVoidType": "error",
         "noAsyncPromiseExecutor": "error",
         "noUnsafeDeclarationMerging": "error",
-        "noVar": "error"
+        "noVar": "error",
+        "noTsIgnore": "error"
       },
       "style": {
         "noNonNullAssertion": "warn",
-        "useConst": "error"
+        "useConst": "error",
+        "noEnum": "error",
+        "useImportType": "error"
       },
       "complexity": {
         "noExcessiveCognitiveComplexity": {
@@ -49,7 +53,8 @@
           }
         },
         "noBannedTypes": "error",
-        "noUselessTypeConstraint": "error"
+        "noUselessTypeConstraint": "error",
+        "noStaticOnlyClass": "error"
       },
       "security": {
         "noDangerouslySetInnerHtml": "error",
