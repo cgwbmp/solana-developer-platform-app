@@ -1,12 +1,13 @@
 /** Environment variables consumed by the Node API runtime. */
 
+import type { WalletAccess } from "@/lib/auth";
 import type { ClerkJwtPayload } from "@/lib/clerk-token";
 import type { Action } from "@sdp/types/actions";
 import type { ApiKeyEnvironment } from "@sdp/types/api-keys";
 import type { EgressReadiness } from "@sdp/types/health";
 import type { OrganizationEntitlements } from "@sdp/types/organization-entitlements";
 import type { OrganizationRpcProvider } from "@sdp/types/organizations";
-import type { OrganizationRole, Permission } from "@sdp/types/permissions";
+import type { OrganizationRole } from "@sdp/types/roles";
 import type { SdpRampProviderStages } from "@sdp/types/release-channels";
 import type { ManagedRpcEnv } from "@sdp/rpc/types";
 import type { RequestGateContext } from "@/middleware/request-gate";
@@ -345,14 +346,8 @@ declare module "hono" {
       /** The key's explicit grants, read fresh on this request. */
       grants: readonly Action[];
       environment: ApiKeyEnvironment;
-      walletScope?: "all" | "selected";
-      signingWalletId: string | null;
-      signingWalletIds?: string[];
-      walletBindings?: Array<{
-        walletId: string;
-        custodyWalletId?: string;
-        permissions: Permission[];
-      }>;
+      /** The key's wallet scope, read fresh on this request (HOO-2099). */
+      walletAccess: WalletAccess;
     };
     // Clerk auth context set by middleware
     clerk?: {

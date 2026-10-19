@@ -19,6 +19,7 @@ import { closeDatabasePools, getDb } from "@/db/client";
 import { createPostgresEarnRepository } from "@/db/repositories/earn.repository.postgres";
 import { SponsorshipBudgetRepository } from "@/db/repositories/sponsorship-budget.repository";
 import { app } from "@/index";
+import { runAsMoneyPrincipal } from "@/lib/money-principal";
 import { runInEachClusterScope } from "@/runtime/cluster-scope-runs";
 import { closeAllRedisClients, createKVStoreSet } from "@/runtime/kv-redis";
 import { createSigningService } from "@/services/domain/signing.service";
@@ -75,6 +76,7 @@ export const apiTestSupport = {
   KoraClient,
   resolveEarnExecutionClient,
   resolveKoraEndpoint,
+  runAsMoneyPrincipal,
   seedTestDatabase,
   signTestClerkJwt,
   submitExternalWalletDeposit,

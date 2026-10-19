@@ -11,7 +11,7 @@ import { TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
 import { authenticateTestClerkUser, ensureTestClerkIssuer } from "@/test/helpers/clerk";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { type SeededApiKey, seedTestDatabase } from "@/test/mocks/db";
+import { seedTestDatabase } from "@/test/mocks/db";
 import { clearKVStores } from "@/test/mocks/kv";
 import type { Env } from "@/types/env";
 
@@ -34,8 +34,8 @@ function buildApp(setup: (c: Context<{ Bindings: Env }>) => void) {
   return app;
 }
 
-function apiKeyContext(environment: "sandbox" | "production"): SeededApiKey {
-  return { ...TEST_SEEDED_API_KEY, environment };
+function apiKeyContext(environment: "sandbox" | "production") {
+  return { ...TEST_SEEDED_API_KEY, environment, walletAccess: { scope: "all" } as const };
 }
 
 async function probe(setup: (c: Context<{ Bindings: Env }>) => void) {

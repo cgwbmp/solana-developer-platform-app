@@ -342,7 +342,7 @@
             "label": "walletId",
             "description": "Provider wallet ID — the `walletId` field returned by GET /v1/wallets.",
             "defaultValue": "privy_wallet_123",
-            "required": false
+            "required": true
           }
         ],
         "bodyFields": [],
@@ -7980,54 +7980,6 @@
     },
     "helius_rings.configure": {
       "module": "helius_rings"
-    },
-    "tokens:read": {
-      "module": "issuance"
-    },
-    "tokens:write": {
-      "module": "issuance"
-    },
-    "tokens:admin": {
-      "module": "issuance"
-    },
-    "payments:read": {
-      "module": "payments"
-    },
-    "payments:write": {
-      "module": "payments"
-    },
-    "earn:read": {
-      "module": "earn"
-    },
-    "earn:write": {
-      "module": "earn"
-    },
-    "counterparties:read": {
-      "module": "payments"
-    },
-    "counterparties:write": {
-      "module": "payments"
-    },
-    "wallets:read": {
-      "module": "custody"
-    },
-    "wallets:write": {
-      "module": "custody"
-    },
-    "compliance:read": {
-      "module": "compliance"
-    },
-    "compliance:write": {
-      "module": "compliance"
-    },
-    "custody:read": {
-      "module": "custody"
-    },
-    "custody:write": {
-      "module": "custody"
-    },
-    "custody:admin": {
-      "module": "custody"
     },
     "mint_authority": {
       "module": "issuance"

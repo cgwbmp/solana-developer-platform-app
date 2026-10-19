@@ -209,12 +209,12 @@ export function registerCustodyPaths(registry: OpenAPIRegistry) {
     summary: "Get wallet public key",
     operationId: "getWalletPublicKey",
     description:
-      "Returns the persisted public key for an exact active walletId. walletId may be omitted only by an API key whose own signing-wallet binding names the wallet; otherwise the request is rejected with 400. Resolution is DB-backed only.",
+      "Returns the persisted public key for an exact active walletId. walletId is required (400 without it); an API key with selected wallets gets 404 for a wallet it does not list. Resolution is DB-backed only.",
     security: [{ apiKeyAuth: [] }],
     request: {
       headers: projectScopeHeaders,
       query: z.object({
-        walletId: walletIdParamSchema.optional(),
+        walletId: walletIdParamSchema,
       }),
     },
     responses: {
@@ -233,7 +233,7 @@ export function registerCustodyPaths(registry: OpenAPIRegistry) {
     summary: "Check signer via simulated memo transaction",
     operationId: "checkWalletSigner",
     description:
-      "Signs a server-authored memo message with the wallet selected by an authenticated API key or Clerk JWT, verifies the signature, and simulates the transaction. Nothing is broadcast and no sponsorship is spent. The wallet is the only readonly signer and the request cannot supply memo text.",
+      "Signs a server-authored memo message with the named wallet, verifies the signature, and simulates the transaction. Nothing is broadcast and no sponsorship is spent. The wallet is the only readonly signer and the request cannot supply memo text.",
     security: [{ apiKeyAuth: [] }],
     request: {
       headers: keyAcceptedHeaders,

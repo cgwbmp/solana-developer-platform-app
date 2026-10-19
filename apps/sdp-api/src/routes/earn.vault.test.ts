@@ -93,7 +93,6 @@ const TEST_SEEDED_API_KEY: SeededApiKey = {
   environment: "sandbox",
   rateLimitTier: "standard",
   allowedIps: null,
-  signingWalletId: null,
   status: "active",
   expiresAt: null,
 };
@@ -456,6 +455,31 @@ describe("POST /v1/earn/vault-deposits — custody runtime admission", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
       error: { details: { reason: "runtime_execution_unavailable" } },
+    });
+    expect(depositIntoVault).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wallet outside the key's scope before opening an audit intent or deposit", async () => {
+    await seedAuth();
+    await seedConnectionWallet();
+    const strategy = await seedStrategy({});
+    await seedApiKeyRow(env, await hashString(TEST_API_KEY.raw, env.API_KEY_PEPPER), {
+      ...TEST_SEEDED_API_KEY,
+      walletScope: "selected",
+      walletIds: [],
+    });
+    const audit = vi.spyOn(AuditService.prototype, "beginCritical");
+
+    const response = await postVaultDeposit(
+      { strategyId: strategy.id, custodyWalletId: "cwlt_earn_vault_connection", amount: "10" },
+      "out-of-scope-deposit",
+      TEST_API_KEY.raw
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: { details: { reason: "wallet_out_of_scope" } },
     });
     expect(depositIntoVault).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();
@@ -1001,52 +1025,6 @@ describe("POST /v1/earn/vault-deposits — request validation", () => {
     );
 
     expect(res.status).toBe(404);
-    expect(depositIntoVault).not.toHaveBeenCalled();
-  });
-
-  it("does not let a selected-wallet key cross an ambiguous provider wallet id", async () => {
-    await seedAuth();
-    const strategy = await seedStrategy({});
-    await seedWallet({
-      publicKey: WALLET_ADDRESS,
-      projectId: TEST_PROJECT.id,
-      configId: "cfg_earn_vault_bound_project",
-      provider: "privy",
-      custodyWalletId: "cwlt_earn_vault_bound_project",
-      providerWalletId: "privy_earn_vault_bound_duplicate",
-    });
-    await seedWallet({
-      publicKey: WALLET_ADDRESS,
-      configId: "cfg_earn_vault_bound_second",
-      provider: "para",
-      custodyWalletId: "cwlt_earn_vault_bound_second",
-      providerWalletId: "privy_earn_vault_bound_duplicate",
-      projectId: TEST_PROJECT.id,
-    });
-    const keyHash = await hashString(TEST_API_KEY.raw, env.API_KEY_PEPPER);
-    await seedApiKeyRow(env, keyHash, {
-      ...TEST_SEEDED_API_KEY,
-      signingWalletId: "privy_earn_vault_bound_duplicate",
-      walletBindings: [
-        {
-          walletId: "privy_earn_vault_bound_duplicate",
-          permissions: ["earn:write"],
-        },
-      ],
-    });
-
-    const res = await postVaultDeposit(
-      {
-        strategyId: strategy.id,
-        custodyWalletId: "cwlt_earn_vault_bound_second",
-        amount: "10",
-        requestId: crypto.randomUUID(),
-      },
-      crypto.randomUUID(),
-      TEST_API_KEY.raw
-    );
-
-    expect(res.status).toBe(403);
     expect(depositIntoVault).not.toHaveBeenCalled();
   });
 });

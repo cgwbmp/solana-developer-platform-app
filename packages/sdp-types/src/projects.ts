@@ -4,7 +4,7 @@
  * Projects group API keys by team or environment within an organization.
  */
 
-import type { ProjectRole } from "./permissions";
+import type { ProjectRole } from "./roles";
 
 export type ProjectEnvironment = "sandbox" | "production";
 

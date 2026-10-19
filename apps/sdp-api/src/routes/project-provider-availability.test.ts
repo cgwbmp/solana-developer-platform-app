@@ -355,7 +355,6 @@ async function seedApiKey(
     environment,
     rateLimitTier: "standard",
     allowedIps: null,
-    signingWalletId: null,
     status: "active",
     expiresAt: null,
   });

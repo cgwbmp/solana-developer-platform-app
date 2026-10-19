@@ -1,5 +1,4 @@
 import type { Action } from "@sdp/types/actions";
-import type { Permission } from "@sdp/types/permissions";
 import {
   PAYMENT_TRANSACTION_KINDS,
   type PaymentTransactionKind,
@@ -47,20 +46,6 @@ export function permittedPaymentTransactionKinds(
     mayPerform(PAYMENT_TRANSACTION_KIND_ACTIONS[kind])
   );
 }
-
-/**
- * The wallet-binding permission that scopes each module's rows to a key's
- * selected wallets. Wallet bindings keep the permission vocabulary until the
- * wallet-scope work replaces it.
- */
-export const UNIFIED_TRANSACTION_MODULE_PERMISSIONS = {
-  payments: "payments:read",
-  earn: "earn:read",
-  dvp: "wallets:read",
-  private_channels: "payments:read",
-  issuance: "tokens:read",
-  rings: "payments:read",
-} as const satisfies Record<UnifiedTransactionModule, Permission>;
 
 /** The modules whose rows a caller may see, given whether it may perform each action. */
 export function permittedUnifiedTransactionModules(

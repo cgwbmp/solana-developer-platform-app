@@ -10,7 +10,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { createPostgresUnifiedTransactionsRepository } from "@/db/repositories/unified-transactions.repository.postgres";
 import { getAuth } from "@/lib/auth";
-import { AppError, forbidden } from "@/lib/errors";
+import { AppError } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { callerMayPerform } from "@/middleware/require-action";
 import {
@@ -19,14 +19,12 @@ import {
   isRampProviderInChannel,
 } from "@/middleware/require-module";
 import type { ValidatedContext } from "@/middleware/validate";
-import { getAllowedApiKeyWalletAuthorizationForPermissions } from "@/services/api-key-scope.service";
 import type { Env } from "@/types/env";
 import {
   PAYMENT_TRANSACTION_KIND_ACTIONS,
   permittedPaymentTransactionKinds,
   permittedUnifiedTransactionModules,
   UNIFIED_TRANSACTION_MODULE_ACTIONS,
-  UNIFIED_TRANSACTION_MODULE_PERMISSIONS,
 } from "./module-permissions";
 import type { UnifiedTransactionsQuery, unifiedTransactionsQuerySchema } from "./schemas";
 
@@ -62,23 +60,6 @@ export async function listUnifiedTransactions(
   if (permittedModules.length === 0) {
     return success(c, { transactions: [], nextCursor: null });
   }
-  const moduleWalletScopes = permittedModules.flatMap((module) => {
-    const authorization = getAllowedApiKeyWalletAuthorizationForPermissions(auth, [
-      UNIFIED_TRANSACTION_MODULE_PERMISSIONS[module],
-    ]);
-    return authorization === null
-      ? []
-      : [{ module, custodyWalletIds: authorization.custodyWalletIds }];
-  });
-  const walletScoped = moduleWalletScopes.length > 0;
-  const requestedWallet = query.custodyWalletId;
-  if (
-    walletScoped &&
-    requestedWallet !== undefined &&
-    !moduleWalletScopes.some((scope) => scope.custodyWalletIds.includes(requestedWallet))
-  ) {
-    throw forbidden("API key is not authorized for the requested wallet");
-  }
   const repository = createPostgresUnifiedTransactionsRepository(getDb(c.env));
   const result = await repository.list({
     ...query,
@@ -90,7 +71,6 @@ export async function listUnifiedTransactions(
     ),
     organizationId: auth.organizationId,
     projectId: auth.projectId,
-    moduleWalletScopes: walletScoped ? moduleWalletScopes : undefined,
   });
   return success(c, { transactions: result.rows, nextCursor: result.nextCursor });
 }

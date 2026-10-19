@@ -1,12 +1,7 @@
 "use client";
 
 import type { Action } from "@sdp/types/actions";
-import type {
-  ApiKeyEnvironment,
-  ApiKeyStatus,
-  ApiKeyWalletBinding,
-  ApiKeyWalletScope,
-} from "@sdp/types/api-keys";
+import type { ApiKeyEnvironment, ApiKeyStatus, ApiKeyWalletScope } from "@sdp/types/api-keys";
 import type { PaymentsDashboardWallet } from "@sdp/types/payments";
 import { Button } from "@sdp/ui/button";
 import { ListEmptyState } from "@sdp/ui/list-empty-state";
@@ -35,12 +30,57 @@ export interface ApiKeyRecord {
   environment: ApiKeyEnvironment;
   status: ApiKeyStatus;
   walletScope: ApiKeyWalletScope;
-  signingWalletId: string | null;
-  signingWalletIds: string[];
-  walletBindings: ApiKeyWalletBinding[];
+  /** Custody wallet ids a selected key lists. */
+  walletIds: string[];
   lastUsedAt: string | null;
   expiresAt: string | null;
+  /** When a rotated key stops working; null unless it is in its grace period. */
+  rotationDeadline: string | null;
   createdAt: string;
+}
+
+/** When the key stops working: its rotation deadline or expiry, whichever is first. */
+function effectiveExpiry(key: ApiKeyRecord): string | null {
+  if (key.rotationDeadline && key.expiresAt) {
+    return new Date(key.rotationDeadline) < new Date(key.expiresAt)
+      ? key.rotationDeadline
+      : key.expiresAt;
+  }
+  return key.rotationDeadline ?? key.expiresAt;
+}
+
+/**
+ * A rotated key that still works until its deadline. Revocation keeps the
+ * deadline, and a key past it stays `active` in the row while authentication
+ * refuses it, so the deadline itself decides.
+ */
+function isRotating(key: ApiKeyRecord, now = Date.now()): boolean {
+  return (
+    key.status === "active" &&
+    key.rotationDeadline !== null &&
+    new Date(key.rotationDeadline).getTime() > now
+  );
+}
+
+function statusLabel(key: ApiKeyRecord, t: ReturnType<typeof useTranslations>): string {
+  return isRotating(key) ? t("DashboardCustody.apiKeyRotatingStatus") : key.status;
+}
+
+/**
+ * The rotation deadline with its time, in UTC: the table renders on the
+ * server too, so a viewer-local time zone would not hydrate.
+ */
+function formatRotationDeadline(value: string, locale: string): string {
+  // Component fields, not dateStyle/timeStyle: those refuse timeZoneName.
+  return new Date(value).toLocaleString(locale, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  });
 }
 
 function formatDate(
@@ -71,10 +111,7 @@ function getWalletNames(
     return { label: t("DashboardCustody.allWallets"), title: t("DashboardCustody.allWallets") };
   }
 
-  const walletIds =
-    key.walletBindings.length > 0
-      ? key.walletBindings.map((binding) => binding.walletId)
-      : key.signingWalletIds;
+  const walletIds = key.walletIds;
   const walletNames = walletIds.map((walletId) => walletLabelById.get(walletId) ?? walletId);
 
   if (walletNames.length === 0) {
@@ -142,7 +179,7 @@ export function ApiKeysTableClient({
   }, [apiKeys]);
 
   const walletLabelById = useMemo(() => {
-    return new Map(wallets.map((wallet) => [wallet.walletId, formatWalletLabel(wallet)]));
+    return new Map(wallets.map((wallet) => [wallet.id, formatWalletLabel(wallet)]));
   }, [wallets]);
 
   if (sortedApiKeys.length === 0) {
@@ -204,7 +241,7 @@ export function ApiKeysTableClient({
                 <span className="block truncate">{key.name}</span>
                 <span className="mt-1 block truncate text-[11px] font-normal text-tertiary">
                   {key.environment}
-                  <span className="@5xl/api-keys-table:hidden"> · {key.status}</span>
+                  <span className="@5xl/api-keys-table:hidden"> · {statusLabel(key, t)}</span>
                   <span className="@4xl/api-keys-table:hidden"> · {key.keyPrefix}</span>
                 </span>
               </TableCell>
@@ -215,13 +252,24 @@ export function ApiKeysTableClient({
                 <AccessSummary apiKey={key} walletLabelById={walletLabelById} />
               </TableCell>
               <TableCell className={`${STATUS_COLUMN_CLASS} text-xs`}>
-                <span className="block truncate">{key.status}</span>
+                <span
+                  className="block truncate"
+                  title={
+                    key.rotationDeadline && isRotating(key)
+                      ? t("DashboardCustody.apiKeyRotatingUntil", {
+                          date: formatRotationDeadline(key.rotationDeadline, locale),
+                        })
+                      : undefined
+                  }
+                >
+                  {statusLabel(key, t)}
+                </span>
               </TableCell>
               <TableCell className={`${LAST_USED_COLUMN_CLASS} text-xs text-secondary`}>
                 {formatDate(key.lastUsedAt, locale, t)}
               </TableCell>
               <TableCell className={`${EXPIRES_COLUMN_CLASS} text-xs text-secondary`}>
-                {formatDate(key.expiresAt, locale, t)}
+                {formatDate(effectiveExpiry(key), locale, t)}
               </TableCell>
               <TableCell className={`${CREATED_COLUMN_CLASS} text-xs text-secondary`}>
                 {formatDate(key.createdAt, locale, t)}
