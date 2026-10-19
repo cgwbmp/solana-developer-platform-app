@@ -23,7 +23,6 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: mockAuth,
 }));
 
-vi.mock("server-only", () => ({}));
 vi.mock("@/lib/provider-availability.server", () => ({
   fetchProjectProviderAvailability: mockFetchProjectProviderAvailability,
 }));
@@ -38,6 +37,7 @@ vi.mock("@/i18n/server", () => ({
 vi.mock("@/flags", () => ({
   issuance: mockIssuanceFlag,
 }));
+vi.mock("@/flags/new-design", () => ({ isNewDesignOn: async () => false }));
 
 vi.mock("@/lib/sdp-api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/sdp-api")>()),
