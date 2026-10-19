@@ -12,26 +12,29 @@ import { TableRow } from "@solana/design-system/table";
 import { ArrowUpRightIcon, ChevronDownIcon, MinusIcon, PlusIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import useSWR from "swr";
-import { formatDecimalAmount } from "@/app/dashboard/[projectId]/payments/payments-presentation";
-import { PAYMENTS_TABLE_CELL } from "@/app/dashboard/[projectId]/payments/payments-table";
-import { RecordBlock, RecordStack } from "@/components/refresh-record";
-import type { MessageKey } from "@/i18n/messages";
-import { useLocale, useTranslations } from "@/i18n/provider";
-import { issuanceQueryKeys } from "../../issuance-query-key";
-import { isOnChain, type TokenLifecycle } from "../../issuance-token-state.redesign";
 import {
   getOperationGroups,
   getOperationLabels,
   type OperationAction,
   type OperationRow,
-} from "../asset-profile/tabs/operation-rows.model";
-import { OpsActionForms } from "../asset-profile/tabs/ops-action-forms";
+} from "@/app/dashboard/[projectId]/issuance/[tokenId]/asset-profile/tabs/operation-rows.model";
+import { OpsActionForms } from "@/app/dashboard/[projectId]/issuance/[tokenId]/asset-profile/tabs/ops-action-forms";
 import {
   fetchTokenTransactionsPage,
   type TokenTransactionsPage,
-} from "../asset-profile/transactions.data";
-import { TokenDisabledActionTooltip } from "../token-disabled-action-tooltip";
-import { getRemainingMintableSupply } from "../token-management-workspace.utils";
+} from "@/app/dashboard/[projectId]/issuance/[tokenId]/asset-profile/transactions.data";
+import { TokenDisabledActionTooltip } from "@/app/dashboard/[projectId]/issuance/[tokenId]/token-disabled-action-tooltip";
+import { getRemainingMintableSupply } from "@/app/dashboard/[projectId]/issuance/[tokenId]/token-management-workspace.utils";
+import { issuanceQueryKeys } from "@/app/dashboard/[projectId]/issuance/issuance-query-key";
+import {
+  isOnChain,
+  type TokenLifecycle,
+} from "@/app/dashboard/[projectId]/issuance/issuance-token-state.redesign";
+import { formatDecimalAmount } from "@/app/dashboard/[projectId]/payments/payments-presentation";
+import { PAYMENTS_TABLE_CELL } from "@/app/dashboard/[projectId]/payments/payments-table";
+import { RecordBlock, RecordStack } from "@/components/refresh-record";
+import type { MessageKey } from "@/i18n/messages";
+import { useLocale, useTranslations } from "@/i18n/provider";
 import { LockSupplyForm, SupplyOperationForm } from "./supply-operation-form";
 import { activityEventLabel } from "./token-activity";
 import {
