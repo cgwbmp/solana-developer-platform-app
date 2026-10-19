@@ -32,13 +32,15 @@
  * Adding a file to any list below is a security-reviewed change.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const API = "apps/sdp-api/src";
 const FEE_PAYMENT = "packages/sdp-fee-payment/src";
+/** The repo root, from this file's location, so the check runs from any directory. */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KEYCHAIN = "packages/sdp-custody/src/keychain";
 /**
  * The packages that define these constructors. They build, subclass and pass
@@ -110,7 +112,10 @@ export const CAPABILITIES = [
   {
     id: "keychain-signing-adapter",
     why: "Holds a provider secret and can sign; only the adapter factory and the wallet lifecycle may build one.",
-    symbols: [{ file: `${KEYCHAIN}/index.ts`, name: "*" }],
+    symbols: readdirSync(path.join(REPO_ROOT, KEYCHAIN))
+      .filter((file) => file.endsWith(".adapter.ts") && !file.endsWith(".test.ts"))
+      .sort()
+      .map((file) => ({ file: `${KEYCHAIN}/${file}`, name: "*" })),
     owners: [CUSTODY_PACKAGE],
     allow: [
       `${API}/services/domain/signing.service.ts`,
@@ -122,7 +127,10 @@ export const CAPABILITIES = [
     id: "provider-signer",
     why: "A provider signer or API client builds signing authority from a stored credential; only the signing service, the adapter factory and the wallet lifecycle may use one.",
     symbols: [
-      { file: "packages/sdp-custody/src/dfns/index.ts", name: "*" },
+      ...readdirSync(path.join(REPO_ROOT, "packages/sdp-custody/src/dfns"))
+        .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
+        .sort()
+        .map((file) => ({ file: `packages/sdp-custody/src/dfns/${file}`, name: "*" })),
       ...KEYCHAIN_SDKS.map((module) => ({ module, name: "*" })),
     ],
     owners: [CUSTODY_PACKAGE],
@@ -137,7 +145,7 @@ export const CAPABILITIES = [
     why: "Signs as fee payer with a process key and no budget; the sponsorship waist builds fee payers.",
     symbols: [
       { file: `${FEE_PAYMENT}/native.adapter.ts`, name: "NativeAdapter" },
-      { file: `${FEE_PAYMENT}/index.ts`, name: "KoraClient" },
+      { module: "@solana/kora", name: "KoraClient" },
     ],
     owners: [FEE_PAYMENT_PACKAGE],
     allow: [],
@@ -592,7 +600,7 @@ export function findValueMovementViolations({ rootDir, tsconfig, capabilities, s
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMain) {
-  const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const rootDir = REPO_ROOT;
   const tsconfig = path.join(rootDir, "apps/sdp-api/tsconfig.json");
   if (!existsSync(tsconfig)) {
     console.error(`Missing ${tsconfig}`);

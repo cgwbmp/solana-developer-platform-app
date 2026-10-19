@@ -1,4 +1,4 @@
-import { redactCredentialString } from "@sdp/redaction";
+import { redactCredentialString } from "@sdp/redaction/credentials";
 import { SigningError } from "../signing";
 import type { CustodyProvisioningRuntime } from "./runtime";
 
@@ -65,7 +65,7 @@ export function sortJsonKeys(value: unknown): unknown {
 }
 
 export function toBase64Url(bytes: Uint8Array): string {
-  return encodeBase64FromBytes(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  return encodeBase64FromBytes(bytes).replace(/\+/g, "-").replace(/\//g, "_").replaceAll("=", "");
 }
 
 export function decodeBase64ToBytes(value: string): Uint8Array {

@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import type { AssetProfile, Token } from "@sdp/types";
+import type { AssetProfile } from "@sdp/types/asset-profiles";
+import type { Token } from "@sdp/types/tokens";
 import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { withLegacyDesign } from "@/flags/new-design";
@@ -10,7 +11,7 @@ import { createTimedTrace } from "@/lib/request-tracing";
 import { createSdpApiClient, type SdpApiClient } from "@/lib/sdp-api";
 import { IssuanceDetailSkeleton } from "../issuance-detail-skeleton";
 import { AssetManagementWorkspace } from "./asset-profile/asset-management-workspace";
-import TokenPage from "./token-page.redesign";
+import { TokenPage } from "./token-page.redesign";
 
 interface TokenManagementPageProps {
   params: Promise<{
