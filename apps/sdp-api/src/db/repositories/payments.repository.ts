@@ -121,8 +121,13 @@ export interface TransferStatusChangeFields {
   sourceAddress?: string | null;
   destinationAddress?: string | null;
   signature?: string | null;
+  serializedTx?: string | null;
+  slot?: number | null;
+  blockTime?: string | null;
+  fee?: number | null;
   amount?: string | null;
   fiatAmount?: string | null;
+  deliveryMode?: PaymentTransferDeliveryMode | null;
   providerData?: Record<string, unknown>;
   error?: string | null;
 }
@@ -200,8 +205,10 @@ export interface PaymentsRepositoryContext {
 export interface PaymentsRepository {
   createTransfer(input: CreatePaymentTransferInput): Promise<PaymentTransferRow | null>;
   /**
-   * Claims an awaiting off-ramp row for its crypto deposit transaction. The
-   * update succeeds only while every on-chain submission field is unoccupied.
+   * Claims an awaiting off-ramp row for its crypto deposit transaction through
+   * the `offramp_deposit_claimed` transition. The update succeeds only while
+   * the row still matches its deposit instruction and every on-chain
+   * submission field is unoccupied.
    */
   updateOnchainTransferForRamp(input: {
     transferId: string;
@@ -227,6 +234,10 @@ export interface PaymentsRepository {
     projectId: string;
     idempotencyKey: string;
   }): Promise<PaymentTransferRow | null>;
+  /**
+   * Updates a transfer's fields. An update carrying a `status` matches no ramp
+   * row: ramp statuses move only through `transitionRampTransfer`.
+   */
   updateTransfer(input: UpdatePaymentTransferInput): Promise<PaymentTransferRow | null>;
   persistSignedTransfer(input: {
     transferId: string;
@@ -243,21 +254,6 @@ export interface PaymentsRepository {
     projectId: string;
     startedAt: string;
   }): Promise<PaymentTransferRow | null>;
-  /**
-   * Atomically transitions a transfer's status only if it is currently one of
-   * `fromStatuses`, scoped to org/project. Returns the updated row, or null when
-   * no row matched (wrong owner, missing, or status changed concurrently).
-   */
-  updateTransferStatusGuarded(
-    input: TransferStatusChangeFields & {
-      transferId: string;
-      organizationId: string;
-      projectId: string;
-      fromStatuses: readonly PaymentTransferStatus[];
-      toStatus: PaymentTransferStatus;
-      updatedAt: string;
-    }
-  ): Promise<PaymentTransferRow | null>;
   /**
    * Applies one `RAMP_TRANSFER_TRANSITIONS` entry as a compare-and-swap: the
    * row must be a ramp transfer of one of the transition's types, in one of its
