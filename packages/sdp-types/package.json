@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./actions": {
+      "types": "./src/actions.ts",
+      "import": "./src/actions.ts",
+      "default": "./src/actions.ts"
+    },
     "./advanced-settings": {
       "types": "./src/advanced-settings.ts",
       "import": "./src/advanced-settings.ts",

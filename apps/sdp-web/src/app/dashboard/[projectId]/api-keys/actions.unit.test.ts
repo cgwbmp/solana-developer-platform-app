@@ -1,4 +1,3 @@
-import type { AllowedOperation } from "@sdp/types/allowed-operations";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PRODUCTION_PROJECT } from "@/test/projects";
 import { setPageRequest } from "@/test/request-project";
@@ -37,7 +36,12 @@ function lastBody(): Record<string, unknown> {
 }
 
 function draft(overrides: Partial<ReturnType<typeof createApiKeyAuthoringDraft>> = {}) {
-  return { ...createApiKeyAuthoringDraft(), name: "Payouts worker", ...overrides };
+  return {
+    ...createApiKeyAuthoringDraft(),
+    name: "Payouts worker",
+    grants: ["transfers.execute" as const],
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -50,7 +54,7 @@ beforeEach(() => {
 });
 
 describe("saveApiKeyAuthoringAction: create", () => {
-  it("creates an unrestricted key without an allowedOperations field", async () => {
+  it("creates a key with its explicit grants", async () => {
     const result = await saveApiKeyAuthoringAction({ mode: "create", draft: draft() });
 
     expect(result.ok).toBe(true);
@@ -58,34 +62,27 @@ describe("saveApiKeyAuthoringAction: create", () => {
     expect(client.fetch.mock.calls[0]?.[0]).toBe("/v1/api-keys");
     expect(lastBody()).toEqual({
       name: "Payouts worker",
-      role: "api_developer",
+      grants: ["transfers.execute"],
       walletScope: "all",
     });
   });
 
-  it("sends the ticked operations, sorted, in the same call that creates the key", async () => {
-    const result = await saveApiKeyAuthoringAction({
+  it("creates a key with its IP allowlist, one entry per address", async () => {
+    await saveApiKeyAuthoringAction({
       mode: "create",
-      draft: draft({
-        operationsScope: "selected",
-        selectedOperations: ["ramp", "payment", "issuance_mint_execute"],
-      }),
+      draft: draft({ allowedIps: "203.0.113.10\n198.51.100.0/24, 203.0.113.10\n" }),
     });
 
-    expect(result.ok).toBe(true);
-    expect(client.fetch).toHaveBeenCalledTimes(1);
-    expect(lastBody()).toMatchObject({
-      allowedOperations: ["issuance_mint_execute", "payment", "ramp"],
-    });
+    expect(lastBody()).toMatchObject({ allowedIps: ["203.0.113.10", "198.51.100.0/24"] });
   });
 
-  it("refuses a limited key with nothing ticked before calling the API", async () => {
+  it("refuses a key with no grants before calling the API", async () => {
     const result = await saveApiKeyAuthoringAction({
       mode: "create",
-      draft: draft({ operationsScope: "selected", selectedOperations: [] }),
+      draft: draft({ grants: [] }),
     });
 
-    expect(result).toEqual({ ok: false, message: "DashboardCustody.apiKeyOperationsRequired" });
+    expect(result).toEqual({ ok: false, message: "DashboardCustody.apiKeyGrantsRequired" });
     expect(client.fetch).not.toHaveBeenCalled();
   });
 
@@ -112,44 +109,40 @@ describe("saveApiKeyAuthoringAction: edit", () => {
     client.fetch.mockResolvedValue({ success: true });
   });
 
-  it("patches the key once, replacing its allowed operations", async () => {
+  it("patches the key once, replacing its grants", async () => {
     const result = await saveApiKeyAuthoringAction({
       mode: "edit",
       keyId: "key_1",
-      draft: draft({ operationsScope: "selected", selectedOperations: ["payment"] }),
-      operationsTouched: true,
+      draft: draft({ grants: ["transfers.read", "wallets.read"] }),
+      grantsTouched: true,
     });
 
     expect(result.ok).toBe(true);
     expect(client.fetch).toHaveBeenCalledTimes(1);
     expect(client.fetch.mock.calls[0]?.[0]).toBe("/v1/api-keys/key_1");
     expect(client.fetch.mock.calls[0]?.[1]?.method).toBe("PATCH");
-    expect(lastBody()).toMatchObject({ allowedOperations: ["payment"] });
+    expect(lastBody()).toMatchObject({ grants: ["transfers.read", "wallets.read"] });
   });
 
-  it("clears the restriction with null when the key is back on All operations", async () => {
+  it("clears the IP allowlist when the field is emptied", async () => {
+    await saveApiKeyAuthoringAction({
+      mode: "edit",
+      keyId: "key_1",
+      draft: draft({ allowedIps: "  " }),
+    });
+
+    expect(lastBody()).toMatchObject({ allowedIps: null });
+  });
+
+  it("sends no grants when the permissions step was not touched", async () => {
     await saveApiKeyAuthoringAction({
       mode: "edit",
       keyId: "key_1",
       draft: draft(),
-      operationsTouched: true,
+      grantsTouched: false,
     });
 
-    expect(lastBody()).toMatchObject({ allowedOperations: null });
-  });
-
-  it("sends no allowedOperations when the operations section was not touched", async () => {
-    await saveApiKeyAuthoringAction({
-      mode: "edit",
-      keyId: "key_1",
-      draft: draft({
-        operationsScope: "selected",
-        selectedOperations: ["gone_operation"] as unknown as AllowedOperation[],
-      }),
-      operationsTouched: false,
-    });
-
-    expect(lastBody()).not.toHaveProperty("allowedOperations");
+    expect(lastBody()).not.toHaveProperty("grants");
   });
 
   it("resets an all-wallets key with walletScope alone, as the API requires", async () => {

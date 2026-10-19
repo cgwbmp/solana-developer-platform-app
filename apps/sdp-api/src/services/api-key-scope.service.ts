@@ -1,17 +1,25 @@
-import type { ApiKeyWalletBinding, ApiKeyWalletScope } from "@sdp/types/api-keys";
 import {
-  type ApiKeyRole,
-  getPermissionsForApiKeyRole,
-  hasAllPermissions,
-  hasAnyPermission,
-  type Permission,
-} from "@sdp/types/permissions";
+  type Action,
+  isActionInReleaseChannel,
+  isApiKeyGrantableAction,
+  organizationRoleMayPerform,
+} from "@sdp/types/actions";
+import type { ApiKeyWalletBinding, ApiKeyWalletScope } from "@sdp/types/api-keys";
+import type { OrganizationRole, Permission } from "@sdp/types/permissions";
+import {
+  isModuleInReleaseChannel,
+  resolveSdpReleaseChannel,
+  type SdpRampProviderStages,
+  type SdpReleaseChannel,
+} from "@sdp/types/release-channels";
+import type { Context } from "hono";
 import type { ApiKeyContext } from "@/lib/auth";
 import { AppError, badRequest, conflict } from "@/lib/errors";
 import {
   type ExactApiKeyWalletBinding,
   normalizeApiKeyWalletPermissions,
 } from "@/services/api-key-wallets.service";
+import type { Env } from "@/types/env";
 
 type WalletBindingInput = {
   walletId: string;
@@ -349,26 +357,68 @@ export async function resolveWalletBindingsInScope(
 }
 
 /**
- * A signed-in person may grant a key at most the permissions they hold; an
- * organization administrator may grant any. Only people manage keys
+ * A signed-in person may grant a key only actions an API key may hold, and
+ * only actions they hold themselves. Only people manage keys
  * (`requireHumanSession`), so the actor is never itself a key.
  */
-export function assertGrantableApiKeyPermissions(
-  actorPermissions: Permission[],
-  resolvedRole: ApiKeyRole,
-  requestedPermissions: Permission[] | null | undefined
+export function assertGrantableApiKeyGrants(
+  actorRole: OrganizationRole,
+  requestedGrants: readonly Action[]
 ): void {
-  if (hasAnyPermission(actorPermissions, ["org:admin"])) {
-    return;
+  const forbiddenForKeys = requestedGrants.filter((grant) => !isApiKeyGrantableAction(grant));
+  if (forbiddenForKeys.length > 0) {
+    throw new AppError("BAD_REQUEST", `API keys cannot hold: ${forbiddenForKeys.join(", ")}`, {
+      actions: forbiddenForKeys,
+    });
   }
-
-  const effectivePermissions =
-    requestedPermissions == null ? getPermissionsForApiKeyRole(resolvedRole) : requestedPermissions;
-
-  if (!hasAllPermissions(actorPermissions, effectivePermissions)) {
+  const beyondActor = requestedGrants.filter(
+    (grant) => !organizationRoleMayPerform(actorRole, grant)
+  );
+  if (beyondActor.length > 0) {
     throw new AppError(
       "INSUFFICIENT_PERMISSIONS",
-      "Cannot grant an API key more permissions than you hold"
+      `Cannot grant an API key actions you do not hold: ${beyondActor.join(", ")}`,
+      { actions: beyondActor }
+    );
+  }
+}
+
+/** The deployment's release channel, which bounds the grants a key may be given. */
+export interface ApiKeyGrantChannel {
+  releaseChannel: SdpReleaseChannel;
+  rampProviderStages: SdpRampProviderStages;
+}
+
+/** The request's deployment channel, read where the grants are decided. */
+export function requestApiKeyGrantChannel(c: Context<{ Bindings: Env }>): ApiKeyGrantChannel {
+  return {
+    releaseChannel: resolveSdpReleaseChannel(c.env.SDP_RELEASE_CHANNEL),
+    rampProviderStages: c.get("rampProviderStages"),
+  };
+}
+
+/**
+ * A key may be given only actions whose module this deployment's release
+ * channel runs, the same set the dashboard offers and the public OpenAPI
+ * document's grant enum lists. Create and update refuse the rest with a 400
+ * naming them; a key that already stores one (granted before a channel
+ * change) keeps it through rotation.
+ */
+export function assertApiKeyGrantsInReleaseChannel(
+  channel: ApiKeyGrantChannel,
+  requestedGrants: readonly Action[]
+): void {
+  const outside = requestedGrants.filter(
+    (grant) =>
+      !isActionInReleaseChannel(grant, (module) =>
+        isModuleInReleaseChannel(channel.releaseChannel, module, channel.rampProviderStages)
+      )
+  );
+  if (outside.length > 0) {
+    throw new AppError(
+      "BAD_REQUEST",
+      `Grants outside this deployment's ${channel.releaseChannel} release channel: ${outside.join(", ")}`,
+      { actions: outside }
     );
   }
 }

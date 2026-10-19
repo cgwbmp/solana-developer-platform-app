@@ -7,6 +7,7 @@ import { getDb } from "@/db/client";
 import { AppError } from "@/lib/errors";
 import { unifiedAuthMiddleware } from "@/middleware/auth";
 import { projectContextMiddleware } from "@/middleware/project-context";
+import { ALL_API_KEY_GRANTS } from "@/test/fixtures/api-keys";
 import { authenticateTestClerkUser } from "@/test/helpers/clerk";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
@@ -102,8 +103,7 @@ function buildApiKeyApp(projectId: string, walletBindings: ApiKeyWalletBinding[]
       id: "key_event_refs_test",
       organizationId: ORGANIZATION_ID,
       projectId,
-      role: "api_admin",
-      permissions: ["*"],
+      grants: ALL_API_KEY_GRANTS,
       environment: "sandbox",
       signingWalletId: null,
       walletBindings,

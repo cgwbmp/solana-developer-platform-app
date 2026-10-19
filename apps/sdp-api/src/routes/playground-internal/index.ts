@@ -5,10 +5,11 @@ import { getClerkAuth, requireProjectId } from "@/lib/auth";
 import { forbidden } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { getRequestTenantScope } from "@/lib/tenant-scope";
-import { requirePermissions, unifiedAuthMiddleware } from "@/middleware/auth";
+import { unifiedAuthMiddleware } from "@/middleware/auth";
 import { requireHumanSession } from "@/middleware/human-session";
 import { meteredQuota } from "@/middleware/metered-quota";
 import { projectContextMiddleware } from "@/middleware/project-context";
+import { requireAction } from "@/middleware/require-action";
 import { type ValidatedBodyContext, validateBody } from "@/middleware/validate";
 import { ApiKeyService } from "@/services/api-key.service";
 import type { Env } from "@/types/env";
@@ -33,7 +34,7 @@ playgroundInternal.use("*", projectContextMiddleware());
 // users.
 playgroundInternal.post(
   "/api-key/verify",
-  requirePermissions("api-keys:read"),
+  requireAction("api_keys.read"),
   validateBody(verifyApiKeySchema),
   meteredQuota({ name: "playground-verify", actorMax: 60, orgMax: 240 }),
   async (c: ValidatedBodyContext<typeof verifyApiKeySchema>) => {

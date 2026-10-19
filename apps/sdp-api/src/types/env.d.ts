@@ -1,12 +1,12 @@
 /** Environment variables consumed by the Node API runtime. */
 
 import type { ClerkJwtPayload } from "@/lib/clerk-token";
-import type { AllowedOperation } from "@sdp/types/allowed-operations";
+import type { Action } from "@sdp/types/actions";
 import type { ApiKeyEnvironment } from "@sdp/types/api-keys";
 import type { EgressReadiness } from "@sdp/types/health";
 import type { OrganizationEntitlements } from "@sdp/types/organization-entitlements";
 import type { OrganizationRpcProvider } from "@sdp/types/organizations";
-import type { Permission } from "@sdp/types/permissions";
+import type { OrganizationRole, Permission } from "@sdp/types/permissions";
 import type { SdpRampProviderStages } from "@sdp/types/release-channels";
 import type { ManagedRpcEnv } from "@sdp/rpc/types";
 import type { RequestGateContext } from "@/middleware/request-gate";
@@ -342,10 +342,9 @@ declare module "hono" {
       id: string;
       organizationId: string;
       projectId: string;
-      role: string;
-      permissions: Permission[];
+      /** The key's explicit grants, read fresh on this request. */
+      grants: readonly Action[];
       environment: ApiKeyEnvironment;
-      allowedOperations?: AllowedOperation[] | null;
       walletScope?: "all" | "selected";
       signingWalletId: string | null;
       signingWalletIds?: string[];
@@ -359,8 +358,8 @@ declare module "hono" {
     clerk?: {
       userId: string;
       organizationId: string;
-      permissions: Permission[];
-      role: string;
+      /** The member's organization role; its actions are ORGANIZATION_ROLE_ACTIONS[role]. */
+      role: OrganizationRole;
       clerkUserId: string;
       clerkOrgId: string;
       email: string | null;

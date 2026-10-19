@@ -7,6 +7,7 @@ import type { EarnProviderWalletRow } from "@/db/repositories/earn.repository";
 import { createPostgresEarnRepository } from "@/db/repositories/earn.repository.postgres";
 import { app } from "@/index";
 import { applyEarnWithdrawalObservationToRow } from "@/services/earn-withdrawal-ledger.service";
+import { ALL_API_KEY_GRANTS } from "@/test/fixtures/api-keys";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
 import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
@@ -78,8 +79,7 @@ const TEST_SEEDED_API_KEY: SeededApiKey = {
   id: TEST_API_KEY.id,
   organizationId: TEST_ORG.id,
   projectId: TEST_PROJECT.id,
-  role: "api_admin",
-  permissions: ["*"],
+  grants: ALL_API_KEY_GRANTS,
   environment: "sandbox",
   rateLimitTier: "standard",
   allowedIps: null,
@@ -140,8 +140,8 @@ beforeEach(async () => {
     getDb(env)
       .prepare(
         `INSERT INTO api_keys
-           (id, organization_id, project_id, created_by, name, key_prefix, key_hash, role, permissions, status)
-         VALUES (?, ?, ?, ?, 'Ledger Fail Key', ?, ?, 'api_admin', ?, 'active')`
+           (id, organization_id, project_id, created_by, name, key_prefix, key_hash, grants, status)
+         VALUES (?, ?, ?, ?, 'Ledger Fail Key', ?, ?, ?, 'active')`
       )
       .bind(
         TEST_API_KEY.id,
@@ -150,7 +150,7 @@ beforeEach(async () => {
         TEST_USER.id,
         TEST_API_KEY.prefix,
         keyHash,
-        JSON.stringify(["*"])
+        ALL_API_KEY_GRANTS
       ),
   ]);
 

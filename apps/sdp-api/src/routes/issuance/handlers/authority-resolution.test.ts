@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import type { ApiKeyContext } from "@/lib/auth";
 import * as solanaSigner from "@/services/solana/signer";
-
 import { env as testEnv } from "@/test/helpers/env";
 import { createTokenTransaction } from "@/test/helpers/factories";
 import { seedDefaultProjects } from "@/test/helpers/projects";
@@ -40,22 +39,21 @@ vi.mock("@solana/token-acl-sdk", async (importOriginal) => ({
 const AUTHORITY = "AENLi9e2XHK7fnMmEqHbPCADPjRPV4n3DxuWbMcBbxK9";
 const OTHER_AUTHORITY = "73ScTjQ3uVNHGF36yoaseFCVUYEoLhZwxvJ9z7CVseod";
 
-function createAuth(overrides: Partial<ApiKeyContext> = {}): ApiKeyContext {
+function createAuth(): ApiKeyContext {
   return {
     id: "user_test",
     organizationId: "org_test",
     projectId: "proj_test",
     role: "admin",
-    permissions: [],
+    grants: null,
     environment: "dashboard",
     signingWalletId: null,
     signingWalletIds: [],
     walletBindings: [],
-    authType: "session",
+    authType: "clerk",
     userId: "user_test",
     apiKeyId: null,
-    ...overrides,
-  } as ApiKeyContext;
+  };
 }
 
 async function seedScope(): Promise<void> {
@@ -123,13 +121,13 @@ async function seedSelectedApiKey(walletId: string): Promise<ApiKeyContext> {
       .prepare(
         `INSERT INTO api_keys (
            id, organization_id, project_id, created_by, name,
-           key_prefix, key_hash, role, permissions, status, signing_wallet_id
+           key_prefix, key_hash, grants, status, signing_wallet_id
          ) VALUES (
            'key_test', 'org_test', 'proj_test', 'user_test', 'Test key',
-           'sdp_test', 'hash_test', 'api_admin', '["tokens:write"]', 'active', ?
+           'sdp_test', 'hash_test', ?, 'active', ?
          )`
       )
-      .bind(walletId),
+      .bind(["issuance.execute"], walletId),
     getDb(testEnv)
       .prepare(
         `INSERT INTO api_key_wallet_permissions (id, api_key_id, wallet_id, permissions)
@@ -144,6 +142,8 @@ async function seedSelectedApiKey(walletId: string): Promise<ApiKeyContext> {
     authType: "api_key",
     apiKeyId: "key_test",
     userId: null,
+    grants: ["issuance.execute"],
+    role: null,
     walletScope: "selected",
     signingWalletId: walletId,
     signingWalletIds: [walletId],

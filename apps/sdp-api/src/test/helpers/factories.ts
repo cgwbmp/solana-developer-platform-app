@@ -1,11 +1,5 @@
-/**
- * Test Factories
- *
- * Builder functions for creating test fixtures with sensible defaults.
- * Use these instead of verbose inline object creation in tests.
- */
-
 import type { Token, TokenAllowlistEntry, TokenTransaction } from "@sdp/types/tokens";
+import { ALL_API_KEY_GRANTS } from "@/test/fixtures/api-keys";
 import type { SeededApiKey } from "@/test/mocks/db";
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -175,8 +169,7 @@ export interface SeededApiKeyOverrides {
   id?: string;
   organizationId?: string;
   projectId?: string;
-  role?: "api_admin" | "api_developer" | "api_readonly";
-  permissions?: SeededApiKey["permissions"];
+  grants?: SeededApiKey["grants"];
   environment?: "sandbox" | "production";
   rateLimitTier?: "standard" | "elevated" | "unlimited";
   allowedIps?: string[] | null;
@@ -192,8 +185,7 @@ export function createSeededApiKey(overrides: SeededApiKeyOverrides = {}): Seede
     id: `key_factory_${n.toString().padStart(8, "0")}`,
     organizationId: `org_factory_${n.toString().padStart(8, "0")}`,
     projectId: `prj_factory_${n.toString().padStart(8, "0")}`,
-    role: "api_admin",
-    permissions: ["*"],
+    grants: ALL_API_KEY_GRANTS,
     environment: "sandbox",
     rateLimitTier: "standard",
     allowedIps: null,

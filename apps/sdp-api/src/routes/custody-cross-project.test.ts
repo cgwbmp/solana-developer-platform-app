@@ -8,6 +8,7 @@ import {
   resetUnresolvedBindingWarningsForTesting,
   upsertApiKeyWalletBinding,
 } from "@/services/api-key-wallets.service";
+import { ALL_API_KEY_GRANTS } from "@/test/fixtures/api-keys";
 import { TEST_SOLANA_ADDRESSES } from "@/test/fixtures/tokens";
 import { seedProjectApiKey } from "@/test/helpers/api-keys";
 import { authenticateTestClerkUser } from "@/test/helpers/clerk";
@@ -92,8 +93,7 @@ async function seedOrganizationCustody(): Promise<void> {
     organizationId: ORGANIZATION_ID,
     projectId: REQUESTER_PROJECT_ID,
     createdBy: USER_ID,
-    role: "api_admin",
-    permissions: ["*"],
+    grants: ALL_API_KEY_GRANTS,
   });
   await seedTestCustodyRows(env, {
     configs: [
@@ -280,7 +280,12 @@ describe("custody wallets across an organization's projects", () => {
     async ({ walletId }) => {
       const response = await requestAsAdmin("/v1/api-keys", {
         method: "POST",
-        body: { name: "Cross-project key", walletScope: "selected", signingWalletId: walletId },
+        body: {
+          name: "Cross-project key",
+          grants: ["transfers.read"],
+          walletScope: "selected",
+          signingWalletId: walletId,
+        },
       });
 
       expect(response.status).toBe(400);

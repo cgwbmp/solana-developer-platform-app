@@ -21,6 +21,7 @@ import { badRequest, forbidden, notFound, solanaRpcError } from "@/lib/errors";
 import { success } from "@/lib/response";
 import { createTenantScope } from "@/lib/tenant-scope";
 import { IDEMPOTENCY_KEY_HEADER } from "@/middleware/idempotency-key";
+import { callerMayPerform } from "@/middleware/require-action";
 import type { ValidatedBodyContext } from "@/middleware/validate";
 import {
   assertApiKeyCustodyWalletAccess,
@@ -29,8 +30,11 @@ import {
 import { createDvpTrade } from "@/services/dvp/create";
 import { custodyWalletForParty } from "@/services/dvp/custody-party";
 import { fundDvpTradeLeg } from "@/services/dvp/fund";
-import type { DvpCallerWallet } from "@/services/dvp/inbound";
-import { callerPartyAddresses, listInboundDvpTrades } from "@/services/dvp/inbound";
+import {
+  callerPartyAddresses,
+  type DvpCallerWallet,
+  listInboundDvpTrades,
+} from "@/services/dvp/inbound";
 import { inspectDvpMint } from "@/services/dvp/inspect-mint";
 import {
   type DvpLegActionResult,
@@ -748,7 +752,8 @@ export const listInboundTrades = async (c: AppContext) => {
     c.env,
     { organizationId: auth.organizationId, projectId, auth },
     inbound.trades.flatMap(({ trade }) => [trade.userA, trade.userB]),
-    inbound.callerAddresses
+    inbound.callerAddresses,
+    callerMayPerform(c, "dvp.execute")
   );
   return success(c, {
     trades: inbound.trades.map((entry) =>
@@ -881,7 +886,8 @@ export const getTrade = async (c: AppContext) => {
     c.env,
     { organizationId: auth.organizationId, projectId, auth },
     [observed.userA, observed.userB],
-    callerAddresses
+    callerAddresses,
+    callerMayPerform(c, "dvp.execute")
   );
   return success(c, {
     trade: {
@@ -977,7 +983,8 @@ async function respondWithPartyTrade(c: AppContext, tradeId: string) {
     c.env,
     { organizationId: auth.organizationId, projectId, auth },
     [observed.userA, observed.userB],
-    callerAddresses
+    callerAddresses,
+    callerMayPerform(c, "dvp.execute")
   );
   return success(c, {
     trade: {

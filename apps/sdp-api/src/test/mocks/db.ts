@@ -5,7 +5,7 @@
  * during the cutover branch.
  */
 
-import type { AllowedOperation } from "@sdp/types/allowed-operations";
+import type { Action } from "@sdp/types/actions";
 import type {
   ApiKeyEnvironment,
   ApiKeyStatus,
@@ -13,7 +13,6 @@ import type {
   ApiKeyWalletScope,
   RateLimitTier,
 } from "@sdp/types/api-keys";
-import type { ApiKeyRole, Permission } from "@sdp/types/permissions";
 import { getDb } from "@/db/client";
 import { resetTerminalRefusalsForTesting } from "@/lib/api-key-refusal-cache";
 import { createKVStoreSet, getRedisClient } from "@/runtime/kv-redis";
@@ -191,12 +190,11 @@ export interface SeededApiKey {
   id: string;
   organizationId: string;
   projectId: string;
-  role: ApiKeyRole;
-  permissions: Permission[];
+  /** The key's explicit grants (`api_keys.grants`). */
+  grants: readonly Action[];
   environment: ApiKeyEnvironment;
   rateLimitTier: RateLimitTier;
   allowedIps: string[] | null;
-  allowedOperations?: AllowedOperation[] | null;
   signingWalletId: string | null;
   /** Ignored: a key's scope follows from its stored bindings. */
   walletScope?: ApiKeyWalletScope;
@@ -261,10 +259,10 @@ export async function seedApiKeyRow(env: Env, keyHash: string, data: SeededApiKe
     .prepare(
       `INSERT INTO api_keys
          (id, organization_id, project_id, created_by, name, key_prefix, key_hash,
-          role, permissions, status, expires_at, rotation_deadline, signing_wallet_id,
-          allowed_ips, allowed_operations, rate_limit_tier)
+          grants, status, expires_at, rotation_deadline, signing_wallet_id,
+          allowed_ips, rate_limit_tier)
        SELECT ?, p.organization_id, p.id, (SELECT id FROM users ORDER BY id LIMIT 1),
-              'Seeded test key', 'sk_test', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              'Seeded test key', 'sk_test', ?, ?, ?, ?, ?, ?, ?, ?
          FROM projects p
         WHERE p.organization_id = ?
           AND (p.id = ? OR (p.environment = ? AND p.status = 'active'))
@@ -272,27 +270,23 @@ export async function seedApiKeyRow(env: Env, keyHash: string, data: SeededApiKe
         LIMIT 1
        ON CONFLICT (id) DO UPDATE SET
          key_hash = EXCLUDED.key_hash,
-         role = EXCLUDED.role,
-         permissions = EXCLUDED.permissions,
+         grants = EXCLUDED.grants,
          status = EXCLUDED.status,
          expires_at = EXCLUDED.expires_at,
          rotation_deadline = EXCLUDED.rotation_deadline,
          signing_wallet_id = EXCLUDED.signing_wallet_id,
          allowed_ips = EXCLUDED.allowed_ips,
-         allowed_operations = EXCLUDED.allowed_operations,
          rate_limit_tier = EXCLUDED.rate_limit_tier`
     )
     .bind(
       data.id,
       keyHash,
-      data.role,
-      JSON.stringify(data.permissions),
+      [...data.grants],
       data.status,
       data.expiresAt,
       data.rotationDeadline ?? null,
       data.signingWalletId,
       data.allowedIps === null ? null : JSON.stringify(data.allowedIps),
-      data.allowedOperations ? JSON.stringify(data.allowedOperations) : null,
       data.rateLimitTier,
       data.organizationId,
       data.projectId,

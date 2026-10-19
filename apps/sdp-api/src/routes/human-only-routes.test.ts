@@ -13,7 +13,7 @@ import { seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
  * organization administration, members and invitations, and project members
  * answer only a signed-in person. This inventory enumerates every route the
  * app registers under those groups, so a new one is refused too or fails
- * here, and proves each refuses an api_admin key that holds every permission.
+ * here, and proves each refuses an API key that holds every grant.
  */
 const HUMAN_ONLY_PATHS = [
   /^\/v1\/api-keys(\/|$)/,
@@ -75,7 +75,7 @@ describe("human-only routes", () => {
     ]);
   });
 
-  it.each(humanOnlyRoutes())("refuses an api_admin API key on %s", async (route) => {
+  it.each(humanOnlyRoutes())("refuses an API key holding every grant on %s", async (route) => {
     const [method, path] = route.split(" ");
     const url = path
       .replace(":projectId", TEST_SEEDED_API_KEY.projectId)

@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import type { ApiKeyContext } from "@/lib/auth";
 import * as solanaSigner from "@/services/solana/signer";
-
 import { TEST_SOLANA_ADDRESSES } from "@/test/fixtures/tokens";
 import { seedTestCustodyRows } from "@/test/helpers/custody";
 import { seedTestPrivyConnection } from "@/test/helpers/custody-connections";
@@ -57,7 +56,7 @@ function clerkAuth(organizationId: string, projectId: string): ApiKeyContext {
     organizationId,
     projectId,
     role: "admin",
-    permissions: ["*"],
+    grants: null,
     environment: "dashboard",
     walletScope: "all",
     signingWalletId: null,
