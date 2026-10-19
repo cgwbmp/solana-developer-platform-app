@@ -3,6 +3,7 @@ import type { SdpEnvironment } from "@sdp/types/api-keys";
 import type {
   PaymentTransferStatus,
   PaymentTransferType,
+  RampTransferSettlement,
   RampTransferTransitionId,
 } from "@sdp/types/payments";
 import type { PersistedRampProviderId, RampProviderId } from "@sdp/types/provider-access";
@@ -32,6 +33,8 @@ export interface PaymentTransferRow {
   /** A retired provider's historical row reads too; writes take a live `RampProviderId`. */
   provider: PersistedRampProviderId | null;
   provider_reference: string | null;
+  /** MoonPay's canonical top-level updatedAt for the currently bound transaction. */
+  provider_observed_at: string | null;
   delivery_mode: PaymentTransferDeliveryMode | null;
   fiat_currency: string | null;
   fiat_amount: string | null;
@@ -137,6 +140,8 @@ export interface RampTransferTransitionInput extends TransferStatusChangeFields 
   organizationId: string;
   projectId: string;
   transition: RampTransferTransitionId;
+  /** MoonPay observations compare this timestamp only for the bound reference. */
+  providerObservation?: { reference: string; observedAt: string };
   updatedAt: string;
 }
 
@@ -316,18 +321,45 @@ export interface PaymentsRepository {
     transferId: string;
     provider: RampProviderId;
   }): Promise<SdpEnvironment | null>;
+  /** Locks the transfer while a MoonPay claim or failed-attempt release is decided. Transaction only. */
+  lockTransferForProvider(input: {
+    transferId: string;
+    provider: RampProviderId;
+  }): Promise<{ transfer: PaymentTransferRow; environment: SdpEnvironment } | null>;
   /**
-   * Atomically binds a provider-owned reference to a provider transfer selected
-   * by SDP's internal correlation ID. Replays with the same reference succeed;
-   * a different occupied reference is never overwritten.
+   * Serializes MoonPay claims and failures for one transaction id, then reads
+   * its bound owner. Transaction only.
    */
-  setProviderReferenceIfEmpty(input: {
+  lockMoonpayTransactionOwner(transactionId: string): Promise<string | null>;
+  getFailedMoonpayTransaction(transactionId: string): Promise<{
+    transferId: string;
+    providerObservedAt: string;
+  } | null>;
+  recordFailedMoonpayTransaction(input: {
+    transactionId: string;
+    transferId: string;
+    providerObservedAt: string;
+    failureReason?: string;
+    settlement?: RampTransferSettlement;
+  }): Promise<void>;
+  /**
+   * Claims a provider reference after the caller locks and checks its transfer.
+   * MoonPay callers also lock the transaction id before checking its owner.
+   * Failed MoonPay transaction ids cannot claim even after the reference clears.
+   */
+  claimProviderReference(input: {
     transferId: string;
     provider: RampProviderId;
     providerReference: string;
     environment: SdpEnvironment;
     updatedAt: string;
   }): Promise<PaymentTransferRow | null>;
+  /** Clears a failed MoonPay attempt after its guarded status transition. Transaction only. */
+  releaseMoonpayProviderReference(input: {
+    transferId: string;
+    providerReference: string | null;
+    providerObservedAt: string | null;
+  }): Promise<void>;
   listTransfersBySignatures(params: {
     signatures: string[];
     organizationId: string;

@@ -104,6 +104,16 @@ describe("RAMP_TRANSFER_TRANSITIONS", () => {
     expect(sortedSources("provider_settled")).toEqual(observable);
     expect(sortedSources("provider_failed")).toEqual(observable);
     expect(sortedSources("provider_expired")).toEqual(["awaiting_payment", "pending"]);
+    expect(sortedSources("moonpay_attempt_failed")).toEqual([
+      "awaiting_payment",
+      "expired",
+      "pending",
+    ]);
+    expect(sortedSources("moonpay_sell_failed")).toEqual([
+      "awaiting_payment",
+      "expired",
+      "pending",
+    ]);
   });
 
   it("lands each provider event on the status it names, for both ramp types", () => {
@@ -122,6 +132,10 @@ describe("RAMP_TRANSFER_TRANSITIONS", () => {
     for (const name of providerTransitions) {
       expect(RAMP_TRANSFER_TRANSITIONS[name].types).toEqual(RAMP_TRANSFER_TYPES);
     }
+    expect(RAMP_TRANSFER_TRANSITIONS.moonpay_attempt_failed.types).toEqual(["onramp"]);
+    expect(RAMP_TRANSFER_TRANSITIONS.moonpay_attempt_failed.to).toBe("awaiting_payment");
+    expect(RAMP_TRANSFER_TRANSITIONS.moonpay_sell_failed.types).toEqual(["offramp"]);
+    expect(RAMP_TRANSFER_TRANSITIONS.moonpay_sell_failed.to).toBe("failed");
   });
 
   it("keeps what SDP's own writers allowed before the table", () => {
@@ -203,6 +217,13 @@ describe("PaymentsRepository.transitionRampTransfer (postgres)", () => {
 
     expect(await transition("xfr_illegal", "provider_expired")).toBeNull();
     expect(await readStatus("xfr_illegal")).toBe("settling");
+  });
+
+  it("does not fail a MoonPay sale after its deposit was claimed", async () => {
+    await seedTransfer({ id: "xfr_claimed_sale", status: "processing", type: "offramp" });
+
+    expect(await transition("xfr_claimed_sale", "moonpay_sell_failed")).toBeNull();
+    expect(await readStatus("xfr_claimed_sale")).toBe("processing");
   });
 
   it("never moves a wallet transfer, even from a listed source status", async () => {
@@ -330,6 +351,12 @@ const RAMP_STATUS_WRITERS: RampStatusWriter[] = [
     writer: "provider settlement events (webhooks and replay)",
     file: "apps/sdp-api/src/services/payments/ramp-settlements.ts",
     evidence: ".transitionRampTransfer(update)",
+    guardedCalls: 1,
+  },
+  {
+    writer: "MoonPay failed buy attempt",
+    file: "apps/sdp-api/src/services/ramps/webhooks/moonpay.ts",
+    evidence: 'transition: "moonpay_attempt_failed"',
     guardedCalls: 1,
   },
   {

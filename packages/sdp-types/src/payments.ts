@@ -102,6 +102,11 @@ export const RAMP_WEBHOOK_REFUSAL_REASONS = [
   "transfer_type_mismatch",
   "asset_mismatch",
   "settled_after_cancel",
+  "provider_reference_conflict",
+  "moonpay_attempt_revived",
+  "moonpay_failure_after_funding",
+  "moonpay_terminal_conflict",
+  "moonpay_sell_failed",
 ] as const;
 export type RampWebhookRefusalReason = (typeof RAMP_WEBHOOK_REFUSAL_REASONS)[number];
 
@@ -243,6 +248,13 @@ export const PROVIDER_OBSERVABLE_RAMP_TRANSFER_STATUSES = [
   "expired",
 ] as const satisfies readonly PaymentTransferStatus[];
 
+/** A MoonPay attempt with no SDP deposit claim can safely stop taking payment. */
+const MOONPAY_UNCLAIMED_TRANSFER_STATUSES = [
+  "pending",
+  "awaiting_payment",
+  "expired",
+] as const satisfies readonly PaymentTransferStatus[];
+
 /**
  * Legal ramp transfer status changes, by name. `transitionRampTransfer` reads
  * the source statuses from here, never from its caller, so an illegal
@@ -272,6 +284,20 @@ export const RAMP_TRANSFER_TRANSITIONS = {
     from: PROVIDER_OBSERVABLE_RAMP_TRANSFER_STATUSES,
     to: "failed",
     types: RAMP_TRANSFER_TYPES,
+  },
+  // A failed MoonPay checkout attempt releases its transaction reference so
+  // the same transfer can be retried. The caller separately guards funding.
+  moonpay_attempt_failed: {
+    from: MOONPAY_UNCLAIMED_TRANSFER_STATUSES,
+    to: "awaiting_payment",
+    types: ["onramp"],
+  },
+  // A failed sale closes its deposit instruction before another deposit can
+  // claim it. A deposit already claimed stays open for reconciliation.
+  moonpay_sell_failed: {
+    from: MOONPAY_UNCLAIMED_TRANSFER_STATUSES,
+    to: "failed",
+    types: ["offramp"],
   },
   // Not from `settling`: a stale redelivered expiry must not undo a transfer
   // another event already revived.
