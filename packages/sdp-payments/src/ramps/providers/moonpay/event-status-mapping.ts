@@ -217,9 +217,6 @@ function moonpaySellOnchainTransfer(
     return undefined;
   }
   const onchain: RampOnchainTransfer = { signature: data.depositHash };
-  if (data.refundWalletAddress) {
-    onchain.sourceAddress = data.refundWalletAddress;
-  }
   if (data.depositWallet) {
     onchain.destinationAddress = data.depositWallet.walletAddress;
   }
@@ -297,16 +294,19 @@ export function moonpaySellTransactionSettlementEvent(
           : {}),
       };
     }
-    case "settled":
-      return {
+    case "settled": {
+      const event: MoonpaySettlementEvent = {
         provider: "moonpay",
         kind,
         ...identity,
         ...providerCustomer,
-        ...(data.quoteCurrencyAmount !== undefined
-          ? { receivedAmount: decimalStringFromNumber(data.quoteCurrencyAmount) }
-          : {}),
       };
+      if (data.refundWalletAddress) event.refundAddress = data.refundWalletAddress;
+      if (data.quoteCurrencyAmount !== undefined) {
+        event.receivedAmount = decimalStringFromNumber(data.quoteCurrencyAmount);
+      }
+      return event;
+    }
     case "failed":
       return {
         provider: "moonpay",

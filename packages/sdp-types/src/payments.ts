@@ -145,6 +145,12 @@ export const PAYMENT_TRANSFER_STATUSES = [
 
 export type PaymentTransferStatus = (typeof PAYMENT_TRANSFER_STATUSES)[number];
 
+/** Statuses in which a signed transfer may persist or begin its submission. */
+export const SIGNED_TRANSFER_SUBMISSION_STATUSES = {
+  standard: ["processing"],
+  offramp: ["processing", "settling"],
+} as const satisfies Record<"standard" | "offramp", readonly PaymentTransferStatus[]>;
+
 export const SUCCESSFUL_PAYMENT_TRANSFER_STATUSES = [
   "completed",
   "confirmed",
@@ -277,6 +283,12 @@ export const RAMP_TRANSFER_TRANSITIONS = {
   },
   provider_settled: {
     from: PROVIDER_OBSERVABLE_RAMP_TRANSFER_STATUSES,
+    to: "settling",
+    types: RAMP_TRANSFER_TYPES,
+  },
+  // A provider's word is not delivery. Only the chain verifier may complete.
+  delivery_verified: {
+    from: ["settling"],
     to: "completed",
     types: RAMP_TRANSFER_TYPES,
   },
