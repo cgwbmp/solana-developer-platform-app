@@ -8,7 +8,6 @@ import { MosaicService } from "@sdp/issuance/mosaic/service";
 import { MintMetadataUpdateError } from "@sdp/issuance/mosaic/types";
 import { hashString } from "@sdp/payments/hash";
 import * as SolanaRpc from "@sdp/rpc/solana";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import type { Address } from "@solana/addresses";
 import { address, getBase58Decoder } from "@solana/kit";
 import * as MosaicSdk from "@solana/mosaic-sdk";
@@ -44,8 +43,7 @@ import { seedTestPrivyConnection } from "@/test/helpers/custody-connections";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
 import { required } from "@/test/helpers/required";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { seedCachedApiKey } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
 
 // Copy the immutable ESM namespace so tests can spy on SDK reads while preserving real exports.
 vi.mock("@solana-program/token-2022", async (importOriginal) => ({
@@ -336,9 +334,6 @@ describe("Issuance Routes", () => {
         apiKeyHash
       )
       .run();
-
-    // Cache API key in KV
-    await kv.apiKeys.put(`key:${apiKeyHash}`, JSON.stringify(TEST_PROJECT_CACHED_KEY));
 
     await seedIssuanceActivityWallet(
       DEFAULT_ISSUANCE_PROVIDER_WALLET_ID,
@@ -1519,8 +1514,8 @@ describe("Issuance Routes", () => {
   });
 
   describe("GET /v1/issuance/transactions", () => {
-    async function cacheProjectApiKey(overrides: Partial<CachedApiKey>) {
-      await seedCachedApiKey(env, apiKeyHash, {
+    async function cacheProjectApiKey(overrides: Partial<SeededApiKey>) {
+      await seedApiKeyRow(env, apiKeyHash, {
         ...TEST_PROJECT_CACHED_KEY,
         ...overrides,
       });
@@ -4599,7 +4594,7 @@ describe("Issuance Routes", () => {
             JSON.stringify(["tokens:write"])
           )
           .run();
-        await seedCachedApiKey(env, apiKeyHash, {
+        await seedApiKeyRow(env, apiKeyHash, {
           ...TEST_PROJECT_CACHED_KEY,
           walletScope: "selected",
           signingWalletIds: ["wal_other"],
@@ -4640,7 +4635,7 @@ describe("Issuance Routes", () => {
             .prepare("DELETE FROM api_key_wallet_permissions WHERE id = ?")
             .bind("akw_issuance_allowlist_scope")
             .run();
-          await seedCachedApiKey(env, apiKeyHash, TEST_PROJECT_CACHED_KEY);
+          await seedApiKeyRow(env, apiKeyHash, TEST_PROJECT_CACHED_KEY);
         }
       });
 

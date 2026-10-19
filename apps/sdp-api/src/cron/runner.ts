@@ -21,7 +21,6 @@ import { providerCredentialSecretCleanupCron } from "@/cron/provider-credential-
 import { rampDeliveriesCron } from "@/cron/ramp-deliveries";
 import { rampTransfersCron } from "@/cron/ramp-transfers";
 import { recurringPaymentsCron } from "@/cron/recurring-payments";
-import { revokedApiKeyCacheCron } from "@/cron/revoked-api-key-cache";
 import { ringsIndexingCron } from "@/cron/rings-indexing";
 import { secretRetirementsCron } from "@/cron/secret-retirements";
 import { sponsorshipBudgetsCron } from "@/cron/sponsorship-budgets";
@@ -54,7 +53,6 @@ export const CRON_DEFINITIONS: readonly CronDefinition[] = [
   ringsIndexingCron,
   pendingDepositsCron,
   pendingWithdrawalsCron,
-  revokedApiKeyCacheCron,
   secretRetirementsCron,
   providerCredentialSecretCleanupCron,
   idempotencyKeyPruneCron,

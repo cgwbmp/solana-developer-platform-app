@@ -1,5 +1,4 @@
 import { hashString } from "@sdp/payments/hash";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import type { UpsertEarnStrategyInput } from "@/db/repositories/earn.repository";
@@ -10,8 +9,8 @@ import { app } from "@/index";
 import { seedTestCustodyRows } from "@/test/helpers/custody";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 
 const { getSplTokenBalances } = vi.hoisted(() => ({ getSplTokenBalances: vi.fn() }));
 vi.mock("@/routes/payments/token-accounts", async (importOriginal) => ({
@@ -77,7 +76,7 @@ const OPEN_WITHDRAWAL_REQUEST_STATUSES = [
   "closed_or_unknown",
 ] as const;
 
-function cachedKey(): CachedApiKey {
+function cachedKey(): SeededApiKey {
   return {
     id: API_KEY.id,
     organizationId: ORG,
@@ -95,7 +94,7 @@ function cachedKey(): CachedApiKey {
 
 async function seedScope(): Promise<void> {
   const keyHash = await hashString(API_KEY.raw, env.API_KEY_PEPPER);
-  await seedCachedApiKey(env, keyHash, cachedKey());
+  await seedApiKeyRow(env, keyHash, cachedKey());
   await getDb(env).batch([
     getDb(env)
       .prepare("INSERT INTO organizations (id, name, slug, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -980,7 +979,7 @@ describe("GET /v1/earn/vault-share-reconciliation", () => {
     await seedStrategy();
     getSplTokenBalances.mockResolvedValue([balance(SHARE_MINT_CATALOGUED, "500")]);
     const keyHash = await hashString(API_KEY.raw, env.API_KEY_PEPPER);
-    await seedCachedApiKey(env, keyHash, {
+    await seedApiKeyRow(env, keyHash, {
       ...cachedKey(),
       signingWalletId: PROVIDER_WALLET_A,
       walletBindings: [{ walletId: PROVIDER_WALLET_A, permissions: ["earn:read"] }],

@@ -1,4 +1,4 @@
-import type { CachedApiKey, SdpEnvironment } from "@sdp/types/api-keys";
+import type { SdpEnvironment } from "@sdp/types/api-keys";
 import {
   CUSTODY_PROVIDERS,
   type CustodyProvider,
@@ -16,8 +16,8 @@ import { signSeededClerkMember } from "@/test/helpers/clerk-member";
 import { custodyReleaseChannel } from "@/test/helpers/custody-release-channel";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 
 vi.mock("@sdp/types/release-channels", async (importOriginal) => {
   const { mockCustodyReleaseChannels } = await import("@/test/helpers/custody-release-channel");
@@ -83,7 +83,7 @@ const OUT_OF_CHANNEL_REFUSAL = {
 
 let clerkToken: string;
 
-function cachedApiKey(environment: SdpEnvironment): CachedApiKey {
+function cachedApiKey(environment: SdpEnvironment): SeededApiKey {
   return {
     id: API_KEYS[environment].id,
     organizationId: ORGANIZATION_ID,
@@ -135,7 +135,7 @@ async function seedEnvironmentApiKey(environment: SdpEnvironment): Promise<void>
     role: "api_admin",
     permissions: ["*"],
   });
-  await seedCachedApiKey(env, keyHash, cachedApiKey(environment));
+  await seedApiKeyRow(env, keyHash, cachedApiKey(environment));
 }
 
 function initialize(environment: SdpEnvironment, provider: CustodyProvider): Promise<Response> {
@@ -542,7 +542,7 @@ describe("Custody setup by project environment", () => {
     });
 
     it.each(["sandbox", "production"] as const)(
-      "answers not found for Managed initialization in an archived %s project, writing nothing and logging no refusal",
+      "refuses Managed initialization with a key of an archived %s project, writing nothing and logging no refusal",
       async (environment) => {
         await getDb(env)
           .prepare("UPDATE projects SET status = 'archived' WHERE id = ?")
@@ -551,11 +551,9 @@ describe("Custody setup by project environment", () => {
 
         const response = await initialize(environment, "privy");
 
-        expect(response.status).toBe(404);
-        expect(await response.json()).toEqual({
-          error: { code: "NOT_FOUND", message: "Project not found" },
-          meta: { requestId: expect.any(String) },
-        });
+        // Authentication refuses a key whose project is not active (HOO-2099).
+        expect(response.status).toBe(401);
+        expect(await response.json()).toMatchObject({ error: { code: "REVOKED_API_KEY" } });
         expect(fetch).not.toHaveBeenCalled();
         expect(provisionPrivyWalletMock).not.toHaveBeenCalled();
         expect(await custodyRows()).toEqual(NO_CUSTODY_ROWS);

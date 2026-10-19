@@ -1,16 +1,10 @@
 import { hashString } from "@sdp/payments/hash";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/db/client";
 import { app } from "@/index";
 import { env } from "@/test/helpers/env";
-import { seedTestDatabase } from "@/test/mocks/db";
-import {
-  clearKVStores,
-  readRateLimitCount,
-  seedCachedApiKey,
-  seedRateLimit,
-} from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores, readRateLimitCount, seedRateLimit } from "@/test/mocks/kv";
 
 const TEST_ORG_ID = "org_places_test";
 const TEST_API_KEY = {
@@ -21,7 +15,7 @@ const TEST_API_KEY = {
 const ACTOR_COUNTER = `metered:places:org:${TEST_ORG_ID}:key:${TEST_API_KEY.id}`;
 const ORG_COUNTER = `metered:places:org:${TEST_ORG_ID}`;
 
-function cachedKey(permissions: CachedApiKey["permissions"]): CachedApiKey {
+function cachedKey(permissions: SeededApiKey["permissions"]): SeededApiKey {
   return {
     id: TEST_API_KEY.id,
     organizationId: TEST_ORG_ID,
@@ -37,9 +31,9 @@ function cachedKey(permissions: CachedApiKey["permissions"]): CachedApiKey {
   };
 }
 
-async function seedKey(permissions: CachedApiKey["permissions"]): Promise<void> {
+async function seedKey(permissions: SeededApiKey["permissions"]): Promise<void> {
   const keyHash = await hashString(TEST_API_KEY.raw, env.API_KEY_PEPPER);
-  await seedCachedApiKey(env, keyHash, cachedKey(permissions));
+  await seedApiKeyRow(env, keyHash, cachedKey(permissions));
 }
 
 async function requestAutocomplete(): Promise<Response> {

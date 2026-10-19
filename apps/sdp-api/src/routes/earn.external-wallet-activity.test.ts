@@ -1,5 +1,4 @@
 import { hashString } from "@sdp/payments/hash";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import {
@@ -12,8 +11,8 @@ import { app } from "@/index";
 import { seedProjectApiKey } from "@/test/helpers/api-keys";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 
 const { readVaultPositions, resolveVaultDirectClient } = vi.hoisted(() => {
   const readVaultPositions = vi.fn();
@@ -70,7 +69,7 @@ const OPEN_WITHDRAWAL_REQUEST_STATUSES = [
   "closed_or_unknown",
 ] as const;
 
-function cachedKey(): CachedApiKey {
+function cachedKey(): SeededApiKey {
   return {
     id: KEY.id,
     organizationId: ORG,
@@ -88,7 +87,7 @@ function cachedKey(): CachedApiKey {
 
 async function seedScope() {
   const keyHash = await hashString(KEY.raw, env.API_KEY_PEPPER);
-  await seedCachedApiKey(env, keyHash, cachedKey());
+  await seedApiKeyRow(env, keyHash, cachedKey());
   await getDb(env).batch([
     getDb(env)
       .prepare("INSERT INTO organizations (id, name, slug, tier, status) VALUES (?, ?, ?, ?, ?)")
@@ -111,7 +110,7 @@ async function seedScope() {
     role: "api_developer",
     permissions: ["earn:read"],
   });
-  await seedCachedApiKey(env, productionKeyHash, {
+  await seedApiKeyRow(env, productionKeyHash, {
     ...cachedKey(),
     id: PRODUCTION_KEY.id,
     projectId: `${PROJECT}_production`,

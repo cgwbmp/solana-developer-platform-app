@@ -10,8 +10,8 @@ import { env } from "@/test/helpers/env";
 import { startJsonServer } from "@/test/helpers/json-server";
 import { seedDefaultProjects } from "@/test/helpers/projects";
 import { required } from "@/test/helpers/required";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 
 const WEBHOOK_SECRET = `whsec_${Buffer.from("test_clerk_webhook_secret_1234567890").toString("base64")}`;
 
@@ -184,7 +184,7 @@ describe("Clerk webhooks", () => {
       required(updatedOrg).settings ? JSON.parse(required(required(updatedOrg).settings)) : null
     ).toBeNull();
   });
-  it("invalidates cached API keys when Clerk deletes an organization", async () => {
+  it("refuses the organization's API keys once Clerk deletes it", async () => {
     const clerkOrgId = "org_clerk_webhook_cache_invalidation";
     const orgId = "org_webhook_cache_invalidation";
     const projectId = "prj_webhook_cache_invalidation";
@@ -222,7 +222,7 @@ describe("Clerk webhooks", () => {
            VALUES (?, ?, ?, ?, 'Webhook cache key', 'sk_test_web', ?, 'api_admin', ?, 'active')`)
         .bind(keyId, orgId, projectId, userId, keyHash, JSON.stringify(["*"])),
     ]);
-    await seedCachedApiKey(env, keyHash, {
+    await seedApiKeyRow(env, keyHash, {
       id: keyId,
       organizationId: orgId,
       projectId,
@@ -239,7 +239,11 @@ describe("Clerk webhooks", () => {
       rotationDeadline: null,
     });
     const authedRequest = () =>
-      app.request("/v1/api-keys", { headers: { Authorization: `Bearer ${rawKey}` } }, env);
+      app.request(
+        `/v1/organizations/${orgId}`,
+        { headers: { Authorization: `Bearer ${rawKey}` } },
+        env
+      );
     expect((await authedRequest()).status).toBe(200);
     const res = await simulateClerkWebhook({
       type: "organization.deleted",

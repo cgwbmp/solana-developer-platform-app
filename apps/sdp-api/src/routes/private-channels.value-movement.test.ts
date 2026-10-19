@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { KeychainPrivyAdapter } from "@sdp/custody/keychain/keychain-privy.adapter";
 import { hashString } from "@sdp/payments/hash";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import type { PrivateChannelDeposit, PrivateChannelWithdrawal } from "@sdp/types/private-channels";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
@@ -29,8 +28,8 @@ import { env } from "@/test/helpers/env";
 import { lastPrivyAdapter } from "@/test/helpers/privy-adapter";
 import { seedDefaultProjects } from "@/test/helpers/projects";
 import { required } from "@/test/helpers/required";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 
 const { createChannelDepositMock, createChannelWithdrawalMock, resolveGatewayAuthMock } =
   vi.hoisted(() => ({
@@ -232,7 +231,7 @@ function withdrawalDto(overrides: Partial<PrivateChannelWithdrawal>): PrivateCha
 async function seedRouteState(): Promise<void> {
   const db = getDb(env);
   const keyHash = await hashString(API_KEY.raw, env.API_KEY_PEPPER);
-  const cachedApiKey: CachedApiKey = {
+  const cachedApiKey: SeededApiKey = {
     id: API_KEY.id,
     organizationId: ORGANIZATION_ID,
     projectId: PROJECT_ID,
@@ -245,8 +244,8 @@ async function seedRouteState(): Promise<void> {
     status: "active",
     expiresAt: null,
   };
-  await seedCachedApiKey(env, keyHash, cachedApiKey);
-  await seedCachedApiKey(env, await hashString(SCOPED_API_KEY.raw, env.API_KEY_PEPPER), {
+  await seedApiKeyRow(env, keyHash, cachedApiKey);
+  await seedApiKeyRow(env, await hashString(SCOPED_API_KEY.raw, env.API_KEY_PEPPER), {
     ...cachedApiKey,
     id: SCOPED_API_KEY.id,
     walletScope: "selected",
@@ -902,7 +901,7 @@ describe("Private Channels — deposit and withdrawal access", () => {
     expect(providerSignerMock).not.toHaveBeenCalled();
   });
 
-  it("denies revoked API keys even when their cached permissions allow replay", async () => {
+  it("denies revoked API keys even when their stored permissions would allow replay", async () => {
     await recordedDeposit(ACTOR_ADDRESS);
     await getDb(env)
       .prepare("UPDATE api_keys SET status = 'revoked', permissions = NULL WHERE id = ?")
@@ -917,7 +916,7 @@ describe("Private Channels — deposit and withdrawal access", () => {
 
   // Authentication reads the key's row, and its wallet bindings, fresh on every
   // request; the route checks that snapshot rather than re-reading it later.
-  it("rejects recovery for a key revoked since its cache entry was written", async () => {
+  it("rejects recovery for a key revoked since its last request", async () => {
     const original = await abandonedWithdrawal();
     await getDb(env)
       .prepare("UPDATE api_keys SET status = 'revoked' WHERE id = ?")
@@ -943,17 +942,15 @@ describe("Private Channels — deposit and withdrawal access", () => {
   // after authentication's read, while the request is in flight.
   it("rejects recovery when the key is revoked right after authentication", async () => {
     const original = await abandonedWithdrawal();
-    const authenticate = organizationAccess.enforceApiKeyOrganizationAccess;
-    vi.spyOn(organizationAccess, "enforceApiKeyOrganizationAccess").mockImplementationOnce(
-      async (...args) => {
-        const access = await authenticate(...args);
-        await getDb(env)
-          .prepare("UPDATE api_keys SET status = 'revoked' WHERE id = ?")
-          .bind(API_KEY.id)
-          .run();
-        return access;
-      }
-    );
+    const authenticate = organizationAccess.authorizeApiKey;
+    vi.spyOn(organizationAccess, "authorizeApiKey").mockImplementationOnce(async (...args) => {
+      const access = await authenticate(...args);
+      await getDb(env)
+        .prepare("UPDATE api_keys SET status = 'revoked' WHERE id = ?")
+        .bind(API_KEY.id)
+        .run();
+      return access;
+    });
 
     const response = await postWithdrawal(
       { walletId: ACTOR_WALLET_ID, amount: "1.5" },

@@ -16,8 +16,8 @@ import { insertTestCustodyWalletRow, seedTestCustodySetup } from "@/test/helpers
 import { activateTestCustodyConnection } from "@/test/helpers/custody-connections";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey } from "@/test/mocks/kv";
+import { seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores } from "@/test/mocks/kv";
 import type { Env } from "@/types/env";
 import { internalCustody } from "./index";
 
@@ -524,7 +524,7 @@ describe("POST /internal/dashboard/custody/provider-credentials", () => {
   it("rejects API-key authentication even with custody admin permission", async () => {
     const rawKey = "sk_test_internal_credential_admin";
     const keyHash = await hashString(rawKey, env.API_KEY_PEPPER);
-    await seedCachedApiKey(env, keyHash, {
+    await seedApiKeyRow(env, keyHash, {
       id: "key_internal_credential_admin",
       organizationId: ORGANIZATION_ID,
       projectId: PROJECT_ID,

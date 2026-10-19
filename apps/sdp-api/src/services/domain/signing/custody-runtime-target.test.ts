@@ -1,12 +1,11 @@
 import { KeychainPrivyAdapter } from "@sdp/custody/keychain/keychain-privy.adapter";
 import type { FullSigningPort } from "@sdp/custody/signing";
-import type { CachedApiKey } from "@sdp/types/api-keys";
-import type { CustodyProvider } from "@sdp/types/custody";
 import {
   CUSTODY_CONNECTION_LIFECYCLES,
   type CustodyConnectionCheckStatus,
   type CustodyConnectionLifecycle,
   type CustodyMode,
+  type CustodyProvider,
   type ProviderCredentialStatus,
 } from "@sdp/types/custody";
 import type { MovementId } from "@sdp/types/movements";
@@ -34,7 +33,7 @@ import { custodyReleaseChannel } from "@/test/helpers/custody-release-channel";
 import { env } from "@/test/helpers/env";
 import { lastPrivyAdapter } from "@/test/helpers/privy-adapter";
 import { seedDefaultProjects } from "@/test/helpers/projects";
-import { seedTestDatabase } from "@/test/mocks/db";
+import { type SeededApiKey, seedTestDatabase } from "@/test/mocks/db";
 import type { Env } from "@/types/env";
 
 vi.mock("@sdp/types/release-channels", async (importOriginal) => {
@@ -70,7 +69,7 @@ const UNFINISHED_INSTALLATION_FACTS = {
   }
 >;
 
-const AUDIT_API_KEY: CachedApiKey = {
+const AUDIT_API_KEY: SeededApiKey = {
   id: "key_runtime_targets",
   organizationId: ORGANIZATION_ID,
   projectId: PROJECT_ID,

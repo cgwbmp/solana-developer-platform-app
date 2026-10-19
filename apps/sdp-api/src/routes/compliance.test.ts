@@ -1,5 +1,4 @@
 import { hashString } from "@sdp/payments/hash";
-import type { CachedApiKey } from "@sdp/types/api-keys";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import { app } from "@/index";
@@ -9,8 +8,8 @@ import { seedProjectApiKey } from "@/test/helpers/api-keys";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
 import { providerStages } from "@/test/helpers/provider-stages";
-import { seedTestDatabase } from "@/test/mocks/db";
-import { clearKVStores, seedCachedApiKey, seedRateLimit } from "@/test/mocks/kv";
+import { type SeededApiKey, seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
+import { clearKVStores, seedRateLimit } from "@/test/mocks/kv";
 
 vi.mock("@sdp/types/release-channels", async (importOriginal) => {
   const { mockReleaseChannelStages } = await import("@/test/helpers/provider-stages");
@@ -39,7 +38,7 @@ const TEST_API_KEY = {
   raw: "sk_test_compliance_fixture",
   prefix: "sk_test_com",
 };
-const TEST_CACHED_API_KEY: CachedApiKey = {
+const TEST_SEEDED_API_KEY: SeededApiKey = {
   id: TEST_API_KEY.id,
   organizationId: TEST_ORG.id,
   projectId: TEST_PROJECT.id,
@@ -73,7 +72,7 @@ let originalDeploymentMode: "managed" | "self_hosted" | undefined;
 
 async function seedAuth(tier: "individual" | "enterprise" = "enterprise"): Promise<void> {
   const keyHash = await hashString(TEST_API_KEY.raw, env.API_KEY_PEPPER);
-  await seedCachedApiKey(env, keyHash, TEST_CACHED_API_KEY);
+  await seedApiKeyRow(env, keyHash, TEST_SEEDED_API_KEY);
 
   await getDb(env).batch([
     getDb(env)
@@ -133,8 +132,8 @@ async function seedProductionApiKey(): Promise<void> {
     role: "api_developer",
     permissions: ["payments:read"],
   });
-  await seedCachedApiKey(env, keyHash, {
-    ...TEST_CACHED_API_KEY,
+  await seedApiKeyRow(env, keyHash, {
+    ...TEST_SEEDED_API_KEY,
     id: TEST_PRODUCTION_API_KEY.id,
     projectId: TEST_PRODUCTION_PROJECT_ID,
     environment: "production",
