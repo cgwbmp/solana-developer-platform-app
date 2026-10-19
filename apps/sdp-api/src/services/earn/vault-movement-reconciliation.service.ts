@@ -1,5 +1,6 @@
 import { supportsVaultProviderOrderWithdraw } from "@sdp/earn/capabilities";
 import { type KaminoDepositReceipt, readKaminoDepositReceipt } from "@sdp/kamino";
+import { resolveClusterRpcUrl } from "@sdp/rpc";
 import { readStamp, withReadFloor } from "@sdp/rpc/read-context";
 import {
   createRpc,
@@ -19,7 +20,7 @@ import {
   type SolanaCluster,
 } from "@sdp/types";
 import type { Signature } from "@solana/kit";
-import { getDb } from "@/db";
+import { getDb } from "@/db/client";
 import {
   createPostgresEarnMovementsRepository,
   type EarnMovementRow,
@@ -30,7 +31,6 @@ import { describeError, logEvent } from "@/runtime/money-path-events";
 import {
   assertClusterEndpoint,
   earnClusterFor,
-  resolveClusterRpcUrl,
   resolveRecordedVaultWithdrawClient,
   resolveVaultDirectClient,
 } from "@/services/earn/execution-registry";

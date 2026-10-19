@@ -4,7 +4,14 @@ import { createClusterHistoryRpc, createClusterRpc } from "@sdp/rpc/factory";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { assertValidAddress } from "@sdp/solana/address";
 import { parseDecimalAmount } from "@sdp/solana/amount";
-import { isSuccessfulPaymentTransferStatus, TRANSFER_CHAIN_VERDICT_STATUSES } from "@sdp/types";
+import {
+  isSuccessfulPaymentTransferStatus,
+  RAMP_TRANSFER_TYPES,
+  TRANSFER_CHAIN_VERDICT_STATUSES,
+  type PaymentTransferStatus as TransferStatus,
+  type PaymentTransferType as TransferType,
+  WALLET_TRANSFER_TYPES,
+} from "@sdp/types";
 import type { Address, Instruction, TransactionSigner } from "@solana/kit";
 import {
   address,
@@ -19,16 +26,12 @@ import {
 import { partiallySignTransactionMessageWithSigners } from "@solana/signers";
 import { getTransferSolInstruction } from "@solana-program/system";
 import { z } from "zod";
-import { getDb } from "@/db";
+import { getDb } from "@/db/client";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
 import {
   generatePaymentTransferId,
-  RAMP_TRANSFER_TYPES,
   type PaymentTransferDirection as TransferDirection,
   type PaymentTransferRow as TransferRow,
-  type PaymentTransferStatus as TransferStatus,
-  type PaymentTransferType as TransferType,
-  WALLET_TRANSFER_TYPES,
 } from "@/db/repositories/payments.repository";
 import { createPostgresPaymentsRepository } from "@/db/repositories/payments.repository.postgres";
 import { getAuth, requireProjectId } from "@/lib/auth";
@@ -60,6 +63,7 @@ import { enforceMeteredQuota } from "@/middleware/metered-quota";
 import type { MovementStepInput, RecordAnswer } from "@/middleware/movement-steps";
 import { assertTransferRampProviderInChannel } from "@/middleware/require-module";
 import type { ValidatedBodyContext } from "@/middleware/validate";
+import { buildSplTransferInstructions } from "@/routes/payments/token-accounts";
 import { getLogger } from "@/runtime/logger";
 import { logEvent } from "@/runtime/money-path-events";
 import { getAllowedApiKeyWalletAuthorizationForPermissions } from "@/services/api-key-scope.service";
@@ -72,7 +76,7 @@ import {
   resolveOutboundPaymentOperation,
 } from "@/services/payment-operation.service";
 import { createTransferSignedSubmissionStore } from "@/services/payments/signed-submission";
-import * as solanaServices from "@/services/solana";
+import { createOrgSignerForCustodyWallet } from "@/services/solana/signer";
 import {
   createSponsorshipFeePayment,
   resolveRequestSponsorshipScope,
@@ -86,7 +90,6 @@ import type { CustodyWallet } from "@/services/stores/custody-config.store";
 import { type AppContext, getPaymentsRepository } from "../context";
 import { mapTransferRow } from "../mappers";
 import { transferIdParamsSchema } from "../schemas";
-import * as tokenAccounts from "../token-accounts";
 import {
   admitPaymentWalletRuntimeExecution,
   assertPaymentWalletReadAccess,
@@ -556,7 +559,7 @@ async function executeSponsoredTransfer(
   }
 ): Promise<{ signature: string; slot: number | null; blockTime: string | null }> {
   const auth = getAuth(c);
-  const signer = await solanaServices.createOrgSignerForCustodyWallet(
+  const signer = await createOrgSignerForCustodyWallet(
     c.env,
     auth.organizationId,
     requireProjectId(c),
@@ -649,7 +652,7 @@ async function executeSplTransfer(
     submissionStore,
     buildInstructions: async ({ signer, feePayer, rpc }) => {
       const { createDestinationAtaInstruction, transferInstruction } =
-        await tokenAccounts.buildSplTransferInstructions(rpc, {
+        await buildSplTransferInstructions(rpc, {
           authority: signer,
           destination: destinationAddress,
           mint: mintAddress,

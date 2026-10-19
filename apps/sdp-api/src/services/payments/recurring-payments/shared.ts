@@ -5,6 +5,7 @@ import { parseDecimalAmount } from "@sdp/solana/amount";
 import {
   type MovementId,
   type PreparedPaymentSubscriptionTransaction,
+  SOL_MINT,
   WELL_KNOWN_TOKEN_BY_MINT,
 } from "@sdp/types";
 import {
@@ -26,12 +27,12 @@ import {
   type TransactionSigner,
 } from "@solana/kit";
 import { findPlanPda, type SubscriptionDelegation } from "@solana/subscriptions";
+import type { PaymentRecurringPaymentRow } from "@/db/repositories/payment-recurring-payments.repository";
 import type {
-  PaymentRecurringPaymentRow,
   PaymentSubscriptionPlanRow,
   PaymentSubscriptionRow,
-} from "@/db/repositories";
-import { createTokenRepository } from "@/db/repositories";
+} from "@/db/repositories/payment-subscriptions.repository";
+import { createTokenRepository } from "@/db/repositories/repository-factory";
 import {
   AppError,
   badRequest,
@@ -47,9 +48,8 @@ import {
   isNativePaymentToken,
   normalizePaymentToken,
   parseU64String,
-  SOL_MINT,
 } from "@/services/payment-operation.service";
-import * as solanaServices from "@/services/solana";
+import { createOrgSignerForCustodyWallet } from "@/services/solana/signer";
 import {
   createSponsorshipFeePayment,
   resolveProjectSponsorshipScope,
@@ -235,7 +235,7 @@ export async function sendSubscriptionInstructions(input: {
 }): Promise<Signature> {
   const signer =
     input.sourceSigner ??
-    (await solanaServices.createOrgSignerForCustodyWallet(
+    (await createOrgSignerForCustodyWallet(
       input.env,
       input.organizationId,
       input.projectId,

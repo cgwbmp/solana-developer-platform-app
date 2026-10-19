@@ -1,3 +1,4 @@
+import type { CounterpartyRow } from "@sdp/payments";
 import { SdpPaymentsError } from "@sdp/payments";
 import type { RampRuntimeContext } from "@sdp/payments/ramps/types";
 import { redactCredentialString } from "@sdp/redaction";
@@ -5,6 +6,7 @@ import {
   isStagedProviderRefusalReason,
   type PaymentRampEstimate,
   type PaymentRampQuote,
+  type PaymentTransferStatus,
   type RampProviderEstimateResult,
 } from "@sdp/types";
 import {
@@ -22,25 +24,17 @@ import type {
 import { isRampProviderSurfaced, type RampProviderId } from "@sdp/types/provider-access";
 import type { z } from "zod";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
-import type { CounterpartyRow } from "@/db/repositories/counterparty.repository";
-import type {
-  PaymentTransferRow,
-  PaymentTransferStatus,
-} from "@/db/repositories/payments.repository";
+import type { PaymentTransferRow } from "@/db/repositories/payments.repository";
 import { requireProjectId } from "@/lib/auth";
 import { mapSettledWithConcurrency } from "@/lib/concurrency";
 import { AppError, conflict, redactErrorForCapture, unsupportedRampCorridor } from "@/lib/errors";
+import { resolveSdpEnvironment } from "@/lib/sdp-environment";
 import { isRampProviderInChannel } from "@/middleware/require-module";
 import { getCounterpartiesRepository } from "@/routes/counterparties/context";
 import { describeError, logEvent, paymentsErrorDiagnostics } from "@/runtime/money-path-events";
 import { rampTransferTokenMint } from "@/services/payment-operation.service";
 import { loadProjectProviderVerdict } from "@/services/provider-availability.service";
-import {
-  type AppContext,
-  getPaymentsRepository,
-  rampRuntime,
-  resolveSdpEnvironment,
-} from "../context";
+import { type AppContext, getPaymentsRepository, rampRuntime } from "../context";
 import {
   assertPaymentWalletExactAccess,
   type ResolvedScope,

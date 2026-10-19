@@ -4,18 +4,17 @@ import { currentClusterScope } from "@sdp/rpc/scope";
 import type * as solanaRpc from "@sdp/rpc/solana";
 import type { SolanaRpc } from "@sdp/rpc/solana";
 import { formatDecimalAmount } from "@sdp/solana/amount";
-import { SOL_MINT } from "@sdp/types";
+import { SOL_MINT, type PaymentTransferStatus as TransferStatus } from "@sdp/types";
 import type { Address, Signature } from "@solana/kit";
 import { observedTransferKind } from "@/db/repositories/payments.kind";
 import type {
   PaymentTransferDirection as TransferDirection,
   PaymentTransferRow as TransferRow,
-  PaymentTransferStatus as TransferStatus,
 } from "@/db/repositories/payments.repository";
 import { mapSettledWithConcurrency } from "@/lib/concurrency";
+import { getSplTokenAccountAddresses } from "@/routes/payments/token-accounts";
 import { getLogger } from "@/runtime/logger";
 import type { AppContext } from "../context";
-import * as tokenAccounts from "../token-accounts";
 
 export const SIGNATURE_HISTORY_LOOKUP_CONCURRENCY = 5;
 
@@ -275,7 +274,7 @@ export async function resolveWalletTokenAccountAddresses(
   walletId: string
 ): Promise<Address[]> {
   try {
-    return await tokenAccounts.getSplTokenAccountAddresses(rpc, owner);
+    return await getSplTokenAccountAddresses(rpc, owner);
   } catch (error) {
     getLogger().error(
       {

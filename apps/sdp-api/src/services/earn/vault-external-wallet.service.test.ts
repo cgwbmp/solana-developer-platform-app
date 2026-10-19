@@ -13,7 +13,7 @@ import {
   SolanaError,
 } from "@solana/kit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getDb } from "@/db";
+import { getDb } from "@/db/client";
 import { generateEarnPositionId } from "@/db/repositories/earn-movements.repository";
 import { env } from "@/test/helpers/env";
 import {
@@ -58,11 +58,14 @@ vi.mock("./jupiter-swap.service", async (importOriginal) => ({
   fetchJupiterSwapLeg,
 }));
 
+vi.mock("@sdp/rpc", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@sdp/rpc")>()),
+  resolveClusterRpcUrl: () => "https://rpc.example.invalid",
+}));
 vi.mock("./execution-registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./execution-registry")>()),
   resolveVaultDirectClient,
   resolveVaultWithdrawClient,
-  resolveClusterRpcUrl: () => "https://rpc.example.invalid",
 }));
 
 // `appendVaultRequestMemo` and `compileUnsignedVaultTransaction` stay REAL:

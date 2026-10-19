@@ -1,9 +1,3 @@
-export {
-  earnVaultDepositRecordSchema,
-  earnVaultDepositSchema,
-  earnVaultWithdrawalSchema,
-} from "@sdp/types/earn-wire";
-
 import {
   EARN_MOVEMENT_STATUSES,
   EARN_PORTFOLIO_DEPOSIT_STATUSES,
@@ -20,7 +14,8 @@ import {
   type EarnProgramWithdrawalRecord,
   type EarnVaultPosition,
 } from "@sdp/types";
-import { successResponseSchema, z } from "./base";
+import { z } from "zod";
+import { successResponseSchema } from "@/openapi/schemas/base";
 import {
   earnExternalWalletPositionSchema,
   earnExternalWalletWithdrawalPreviewResponseFields,

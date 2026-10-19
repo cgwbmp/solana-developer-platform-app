@@ -331,6 +331,21 @@
           }
         }
       }
+    },
+    {
+      "includes": ["**/apps/sdp-api/src/**/*.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "error",
+            "noReExportAll": "error"
+          },
+          "style": {
+            "noExportedImports": "error"
+          }
+        }
+      },
+      "plugins": ["./.biome-plugins/no-export-from.grit"]
     }
   ],
   "files": {
