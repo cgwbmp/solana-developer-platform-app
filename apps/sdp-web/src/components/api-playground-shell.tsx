@@ -7,7 +7,7 @@ import { Input } from "@sdp/ui/input";
 import { useThemeScope } from "@sdp/ui/theme-scope";
 import { Badge } from "@solana/design-system/badge";
 import { Braces, Clock3, Copy, Loader2, Play, Sparkles } from "lucide-react";
-import type { ComponentProps, Dispatch, ReactNode, SetStateAction } from "react";
+import type { ComponentProps, Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
@@ -15,24 +15,16 @@ import {
   ApiPlaygroundRefreshLayout,
 } from "@/components/api-playground-refresh-layout";
 import { buildSnippets } from "@/components/api-playground-snippets";
-import {
-  type IdentifyPendingApiKey,
-  PendingApiKeyContext,
-} from "@/components/playground-pending-api-key";
 import { useOptionalDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
 import type { MessageKey } from "@/i18n/messages";
 import { useTranslations } from "@/i18n/provider";
 import type { TranslationValues } from "@/i18n/translate";
 import { filterPlaygroundEndpointsToReleaseChannel } from "@/lib/api-playground-openapi-catalog";
 import { dashboardRequest } from "@/lib/dashboard-fetch";
+import { parseDashboardPathname } from "@/lib/dashboard-project-path";
 import { useDashboardUrlState } from "@/lib/dashboard-url-state";
 import { answerRetiresKey, apiErrorCode, storageFingerprint } from "@/lib/idempotency";
 import { createIdempotencyKeyStore } from "@/lib/idempotency-key-store";
-import {
-  getStoredApiKeySecret,
-  isValidSdpApiKey,
-  normalizeApiKeyInput,
-} from "@/lib/playground-api-keys";
 import { setNestedValue } from "@/lib/set-nested-value";
 import { HighlightedCode, type HighlightLanguage } from "@/lib/shiki-code";
 
@@ -83,22 +75,16 @@ interface ExecutionResult {
   status: number;
   statusText: string;
   durationMs: number;
-  authMode: "api_key" | "session";
   body: unknown;
-  /** The response headers the proxy passes through (an allowlist, secret redacted). */
+  /** The response headers the proxy passes through (an allowlist). */
   headers: Record<string, string>;
 }
 
 interface ApiPlaygroundShellProps {
   apiBaseUrl?: string | null;
-  apiKeyId: string | null;
-  apiKeySelector?: ReactNode;
-  /** A refresh playground with no key offers this instead of Run (usePlaygroundCreateKeyHref). */
-  createApiKeyHref?: string;
   defaultEndpointId?: string;
   endpoints: ApiPlaygroundEndpointConfig[];
   leftMessages?: ApiPlaygroundMessage[];
-  requiresApiKey?: boolean;
   productName: string;
   rightMessages?: ApiPlaygroundMessage[];
 }
@@ -423,11 +409,18 @@ function getExecutionStatus(
  * too; an answer that retires a key (`answerRetiresKey`) clears it, a Send of
  * a different write replaces it, and a GET (keyless) leaves it. It is one
  * entry of an idempotency key store, so it is scoped by user and org with the
- * dashboard's other keys. The request can carry a pasted API key, so only its
- * digest ({@link storageFingerprint}) is stored, never the request.
+ * dashboard's other keys. Only the request's digest ({@link storageFingerprint})
+ * is stored, never the request.
  */
 const playgroundRetryKeys = createIdempotencyKeyStore("sdp:playground:retry:idempotency:v1");
-const UNSETTLED_SEND = "unsettled-send";
+const UNSETTLED_SEND = "unsettled-send-session";
+/**
+ * The entry a build that sent playground requests with a pasted API key left.
+ * Its digest names the key, so no Send of this build matches it, and its key
+ * was bound to that credential: replaying it as the session would be refused.
+ * A write it may have landed is checked by the user, not sent again blind.
+ */
+const KEY_BUILD_UNSETTLED_SEND = "unsettled-send";
 const unsettledSendSchema = z.object({ request: z.string(), key: z.string() });
 
 /** What the store's single entry holds: the request digest and its key. */
@@ -483,7 +476,6 @@ function isMoneyRouteRequest(method: ApiPlaygroundMethod, resolvedPath: string):
 
 interface ExecutePlaygroundRequestOptions {
   activeEndpoint: ApiPlaygroundEndpointConfig;
-  apiKeyId: string | null;
   fieldValues: Record<string, string>;
   requestBody: unknown | null;
   requestBodyResult: RequestBodyResult | null;
@@ -497,7 +489,6 @@ interface ExecutePlaygroundRequestOptions {
 
 async function executePlaygroundRequest({
   activeEndpoint,
-  apiKeyId,
   fieldValues,
   requestBody,
   requestBodyResult,
@@ -525,22 +516,27 @@ async function executePlaygroundRequest({
     return;
   }
 
-  const normalizedApiKey = normalizeApiKeyInput(getStoredApiKeySecret({ apiKeyId }) ?? "");
-  if (!normalizedApiKey) {
-    onExecutionError(t("Shared.SharedComponents.apiKeySecretRequired"));
-    return;
-  }
-  if (!isValidSdpApiKey(normalizedApiKey)) {
-    onValidationError(t("Shared.SharedComponents.invalidApiKeyFormat"));
-    return;
-  }
-
   // Each Send is a new call with a new key, unless it retries one that settled
   // nothing ({@link playgroundRetryKeys}). The proxy forwards it as
   // Idempotency-Key, which the money routes require. A money route whose key
   // the browser would not keep is not sent, as the dashboard's own forms
   // refuse it: a reload would lose the key and the retry could pay twice.
-  const sendRequest = JSON.stringify([apiKeyId, activeEndpoint.method, resolvedPath, requestBody]);
+  // A write the previous build sent and never heard back about may have landed,
+  // and no Send here can retry it under its key. Every write waits until the
+  // user confirms they checked its outcome; only then is it forgotten.
+  if (hasRequestBody(activeEndpoint.method) && playgroundRetryKeys.has(KEY_BUILD_UNSETTLED_SEND)) {
+    if (!window.confirm(t("Shared.SharedComponents.earlierPlaygroundWriteConfirm"))) {
+      onExecutionError(t("Shared.SharedComponents.earlierPlaygroundWriteUnsettled"));
+      return;
+    }
+    const unsettled = playgroundRetryKeys.claim(KEY_BUILD_UNSETTLED_SEND);
+    playgroundRetryKeys.release(KEY_BUILD_UNSETTLED_SEND, unsettled.key);
+  }
+
+  // The request runs as the signed-in member against the tab's Project, so the
+  // Project is part of what makes two Sends the same request.
+  const { projectId } = parseDashboardPathname(window.location.pathname);
+  const sendRequest = JSON.stringify([projectId, activeEndpoint.method, resolvedPath, requestBody]);
   const claimed = hasRequestBody(activeEndpoint.method) ? keyForSend(sendRequest) : undefined;
   if (
     claimed !== undefined &&
@@ -565,7 +561,6 @@ async function executePlaygroundRequest({
         method: activeEndpoint.method,
         path: resolvedPath,
         body: requestBody,
-        apiKey: normalizedApiKey,
         idempotencyKey,
       }),
     });
@@ -600,7 +595,6 @@ async function executePlaygroundRequest({
       status: envelope.status,
       statusText: envelope.statusText,
       durationMs: Date.now() - startedAt,
-      authMode: "api_key",
       body: envelope.body ?? {},
       headers: envelope.headers ?? {},
     });
@@ -793,17 +787,15 @@ function PlaygroundFieldSection({
   );
 }
 
-/** The top row: the endpoint picker, and the caller's API key control beside it. */
+/** The top row: the endpoint picker. */
 function PlaygroundEndpointBar({
   endpoints,
   activeEndpoint,
   onEndpointChange,
-  apiKeySelector,
 }: {
   endpoints: ApiPlaygroundEndpointConfig[];
   activeEndpoint: ApiPlaygroundEndpointConfig;
   onEndpointChange: (endpointId: string) => void;
-  apiKeySelector?: ReactNode;
 }) {
   const t = useTranslations();
   return (
@@ -841,10 +833,6 @@ function PlaygroundEndpointBar({
             <path d="m4 6 4 4 4-4" />
           </svg>
         </div>
-      </div>
-
-      <div className="border-t border-border-default px-6 py-5 lg:border-t-0">
-        <div className="flex justify-stretch lg:justify-end">{apiKeySelector ?? null}</div>
       </div>
     </div>
   );
@@ -1064,7 +1052,6 @@ function PlaygroundOutputColumn({
 
 /** The bottom row: run and reset under the request, the copy actions under the output. */
 function PlaygroundActionBar({
-  requiresApiKey,
   isExecuting,
   onRun,
   onReset,
@@ -1072,7 +1059,6 @@ function PlaygroundActionBar({
   onCopyCode,
   onCopyAi,
 }: {
-  requiresApiKey: boolean;
   isExecuting: boolean;
   onRun: () => void;
   onReset: () => void;
@@ -1085,16 +1071,11 @@ function PlaygroundActionBar({
     <div className="grid shrink-0 lg:grid-cols-2">
       <div className="px-6 py-5">
         <div className="flex flex-col gap-3">
-          {requiresApiKey ? (
-            <p className="text-sm leading-6 text-secondary">
-              {t("Shared.SharedComponents.apiKeyRequired")}
-            </p>
-          ) : null}
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
               onClick={onRun}
-              disabled={isExecuting || requiresApiKey}
+              disabled={isExecuting}
               className="h-10 rounded-[var(--button-radius-lg)] bg-primary px-4 text-on-primary hover:opacity-90 max-sm:flex-1 whitespace-nowrap"
               iconLeft={
                 isExecuting ? (
@@ -1311,13 +1292,9 @@ function useApiPlaygroundState({
 
 export function ApiPlaygroundShell({
   apiBaseUrl,
-  apiKeyId,
-  apiKeySelector,
-  createApiKeyHref,
   defaultEndpointId,
   endpoints: offeredEndpoints,
   leftMessages = [],
-  requiresApiKey = false,
   productName,
   rightMessages = [],
 }: ApiPlaygroundShellProps) {
@@ -1359,19 +1336,16 @@ export function ApiPlaygroundShell({
     responseBody,
     aiInstructions,
   } = useApiPlaygroundState({ apiBaseUrl, defaultEndpointId, endpoints, productName, t });
-  // The key field fills this, so a run can identify a key pasted a moment before.
-  const identifyPendingApiKey = useRef<IdentifyPendingApiKey | null>(null);
-  // Set from the press until the run settles, key check included: a second Run or ⌘↵ meanwhile
-  // would wait on the same check and then send the request again.
+  // Set from the press until the run settles: a second Run or ⌘↵ meanwhile would send the
+  // request again.
   const runPending = useRef(false);
 
   if (!activeEndpoint) {
-    return null;
+    // Every operation this surface offers is outside the published catalog.
+    return endpoints.length === 0 && offeredEndpoints.length > 0 ? (
+      <EmptyState>{t("Shared.SharedComponents.noPublishedPlaygroundOperations")}</EmptyState>
+    ) : null;
   }
-
-  const keySelector = apiKeySelector ? (
-    <PendingApiKeyContext value={identifyPendingApiKey}>{apiKeySelector}</PendingApiKeyContext>
-  ) : null;
 
   const panelContent = resolvePanelContent(activePanel, codeSnippet, responseBody, exampleBody);
   const panelLanguage: HighlightLanguage = activePanel === "code" ? "javascript" : "json";
@@ -1404,16 +1378,9 @@ export function ApiPlaygroundShell({
     setExecuteError(null);
   };
 
-  const runWithIdentifiedKey = async () => {
-    // A key pasted a moment ago, its popover maybe still open, is identified before the run so
-    // the run uses it. A refused key stops the run; the key field says why.
-    const pending = (await identifyPendingApiKey.current?.()) ?? { kind: "none" };
-    if (pending.kind === "rejected") {
-      return;
-    }
+  const run = async () => {
     await executePlaygroundRequest({
       activeEndpoint,
-      apiKeyId: pending.kind === "identified" ? pending.apiKeyId : apiKeyId,
       fieldValues,
       requestBody,
       requestBodyResult,
@@ -1444,7 +1411,7 @@ export function ApiPlaygroundShell({
     runPending.current = true;
     setExecuteError(null);
     setExecutionResult(null);
-    void runWithIdentifiedKey().finally(() => {
+    void run().finally(() => {
       runPending.current = false;
     });
   };
@@ -1455,9 +1422,7 @@ export function ApiPlaygroundShell({
         endpoints={endpoints}
         activeEndpoint={activeEndpoint}
         onEndpointChange={updateEndpointInUrl}
-        apiKeySelector={keySelector}
         apiHost={apiHostOf(effectiveApiBaseUrl)}
-        requiresApiKey={requiresApiKey}
         messages={[...leftMessages, ...rightMessages]}
         fieldValues={fieldValues}
         onFieldChange={updateFieldValue}
@@ -1474,7 +1439,6 @@ export function ApiPlaygroundShell({
         onReset={handleReset}
         onCopy={(text, action) => void copyText(text, action)}
         copiedAction={copiedAction}
-        createApiKeyHref={createApiKeyHref}
       />
     );
   }
@@ -1486,7 +1450,6 @@ export function ApiPlaygroundShell({
         endpoints={endpoints}
         activeEndpoint={activeEndpoint}
         onEndpointChange={updateEndpointInUrl}
-        apiKeySelector={keySelector}
       />
 
       <PlaygroundSectionTabs mobileSection={mobileSection} onChange={setMobileSection} />
@@ -1514,7 +1477,6 @@ export function ApiPlaygroundShell({
       </div>
 
       <PlaygroundActionBar
-        requiresApiKey={requiresApiKey}
         isExecuting={isExecuting}
         onRun={handleExecute}
         onReset={handleReset}

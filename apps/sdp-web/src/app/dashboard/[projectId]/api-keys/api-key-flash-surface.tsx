@@ -98,7 +98,6 @@ export function ApiKeyFlashSurface() {
         key={scopeKey}
         keyValue={flash.key}
         message={flash.message}
-        apiKeyId={flash.apiKeyId}
         keyPrefix={flash.keyPrefix}
       />
     );
