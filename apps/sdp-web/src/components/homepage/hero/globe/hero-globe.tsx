@@ -3,9 +3,9 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { NARROW_QUERY } from "@/components/homepage/layout";
 import { useTranslations } from "@/i18n/provider";
 import { useLazyScene } from "@/lib/use-scene-active";
-import { NARROW_QUERY } from "../../layout";
 import styles from "./hero-globe.module.css";
 import type { GlobeLabels } from "./payments";
 

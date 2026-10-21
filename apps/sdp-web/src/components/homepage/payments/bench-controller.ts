@@ -8,8 +8,8 @@
  * reduced motion nothing runs.
  */
 
+import { reflow } from "@/components/homepage/restart-animation";
 import { watchActive } from "@/lib/use-scene-active";
-import { reflow } from "../restart-animation";
 import { createFigurePlayer, type FigurePlayer } from "./figures/player";
 import { figureViewBox, type PaymentKind } from "./kinds";
 

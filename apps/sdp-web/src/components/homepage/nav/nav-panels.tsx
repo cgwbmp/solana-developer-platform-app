@@ -2,7 +2,7 @@
 
 import { cn } from "@sdp/ui/cn";
 import { type FocusEvent, useEffect, useEffectEvent, useRef } from "react";
-import { externalLinkProps } from "../homepage-links";
+import { externalLinkProps } from "@/components/homepage/homepage-links";
 import styles from "./nav.module.css";
 import type { NavGroup, NavGroupId } from "./nav-types";
 

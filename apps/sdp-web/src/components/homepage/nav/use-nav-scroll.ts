@@ -1,7 +1,7 @@
 "use client";
 
 import { type RefObject, useEffect, useState } from "react";
-import { ANCHOR_OFFSET } from "../layout";
+import { ANCHOR_OFFSET } from "@/components/homepage/layout";
 import { NAV_GROUP_IDS, type NavGround, type NavGroupId } from "./nav-types";
 
 /** The section under this share of the viewport's height decides the bar's ground. */

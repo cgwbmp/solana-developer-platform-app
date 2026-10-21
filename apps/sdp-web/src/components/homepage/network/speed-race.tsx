@@ -3,11 +3,11 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { restartClass } from "@/components/homepage/restart-animation";
+import { useRiseArrived } from "@/components/homepage/rise";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import { formatNumber } from "@/lib/number-format";
 import { watchActive } from "@/lib/use-scene-active";
-import { restartClass } from "../restart-animation";
-import { useRiseArrived } from "../rise";
 import styles from "./network.module.css";
 import {
   createRaceState,

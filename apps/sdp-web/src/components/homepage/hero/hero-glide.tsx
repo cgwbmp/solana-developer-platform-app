@@ -2,7 +2,7 @@
 
 import { useReducedMotion } from "motion/react";
 import { useEffect } from "react";
-import { NARROW_QUERY, NAV_HEIGHT } from "../layout";
+import { NARROW_QUERY, NAV_HEIGHT } from "@/components/homepage/layout";
 
 const LOCK_MS = 1100;
 /* a scroll this soon after a wheel event is the wheel's */

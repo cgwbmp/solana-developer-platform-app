@@ -1,5 +1,5 @@
 import { cn } from "@sdp/ui/cn";
-import { FormHeadline } from "../form-headline";
+import { FormHeadline } from "@/components/homepage/form-headline";
 import styles from "./hero.module.css";
 
 /* the headline forms 700ms in, letter after letter at 30ms */

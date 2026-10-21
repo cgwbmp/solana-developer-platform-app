@@ -3,9 +3,9 @@
    top with the deposit received.
    Motion: the card is tapped, the coin climbs the ramp onto the wallet and is taken in, the
    balance runs up by 500.00, the status pings, and the next coin settles back on the ramp. */
-import type { Pt } from "../geometry";
-import { attr, INK, type Key, makeFig, rrect, SW, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+import { INK, type Pt, rrect, T } from "@/components/homepage/payments/figures/geometry";
+import { attr, type Key, makeFig, SW } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 export function depositScene({ fonts, label, copy }: SceneInput): string {
   const g = makeFig({ ox: 243, oy: 241, id: "dep", cycle: 1900, label, fonts });

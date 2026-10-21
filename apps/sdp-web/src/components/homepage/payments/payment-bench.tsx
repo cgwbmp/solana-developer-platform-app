@@ -3,9 +3,9 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useRiseArrived } from "@/components/homepage/rise";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import { formatNumber } from "@/lib/number-format";
-import { useRiseArrived } from "../rise";
 import { type BenchController, createBenchController } from "./bench-controller";
 import type { FigFonts } from "./figures/make-fig";
 import { FIGURE_WORDS, type FigureCopy } from "./figures/scene-input";

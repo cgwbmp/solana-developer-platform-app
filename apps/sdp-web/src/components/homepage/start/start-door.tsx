@@ -3,7 +3,7 @@
 import { useReducedMotion } from "motion/react";
 import Link from "next/link";
 import type { PointerEvent } from "react";
-import { externalLinkProps, type SignupLink } from "../homepage-links";
+import { externalLinkProps, type SignupLink } from "@/components/homepage/homepage-links";
 import styles from "./start.module.css";
 
 /** How far the knob leans toward the pointer, in px, and the distance at which it leans fully. */

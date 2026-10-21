@@ -24,7 +24,7 @@ vi.mock("@/i18n/provider", async () => {
   };
 });
 
-import { MarketsSection } from "../markets-section";
+import { MarketsSection } from "@/components/homepage/markets-section";
 import { MarketsChart, rateAt, yAtX } from "./markets-chart";
 
 const observers: { callback: IntersectionObserverCallback; disconnect: () => void }[] = [];

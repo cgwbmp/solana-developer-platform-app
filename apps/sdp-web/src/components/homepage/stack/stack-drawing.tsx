@@ -3,9 +3,9 @@
 import { useInView, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-import { NARROW_QUERY } from "../layout";
-import { restartAttribute } from "../restart-animation";
-import { useRiseArrived } from "../rise";
+import { NARROW_QUERY } from "@/components/homepage/layout";
+import { restartAttribute } from "@/components/homepage/restart-animation";
+import { useRiseArrived } from "@/components/homepage/rise";
 import { Bubble } from "./bubble";
 import {
   ServiceIcon,

@@ -623,5 +623,3 @@ ${out.join("\n")}
   };
   return api;
 }
-
-export { ACCENT, circ, INK, rrect, T };

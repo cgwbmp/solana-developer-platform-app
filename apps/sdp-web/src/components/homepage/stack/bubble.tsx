@@ -1,6 +1,6 @@
 import { cn } from "@sdp/ui/cn";
 import type { ReactNode, Ref } from "react";
-import bubble from "../bubble.module.css";
+import bubble from "@/components/homepage/bubble.module.css";
 import styles from "./stack.module.css";
 
 type BubbleProps = {

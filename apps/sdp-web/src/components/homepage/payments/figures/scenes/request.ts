@@ -6,9 +6,16 @@
    it; then the track runs from Processed through Confirmed to Finalized, Finalized in green with
    a ping. The next time round the link is used instead: a click on its copy icon, and only then
    does the payment come out of the pill. */
-import { cubicPath, type Pt } from "../geometry";
-import { circ, type Frame, INK, type Key, makeFig, rrect, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+import {
+  circ,
+  cubicPath,
+  INK,
+  type Pt,
+  rrect,
+  T,
+} from "@/components/homepage/payments/figures/geometry";
+import { type Frame, type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 /*
  * A picture of a QR code, not one: the three finder squares are real, every other module comes

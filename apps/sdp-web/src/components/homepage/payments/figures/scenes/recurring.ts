@@ -4,9 +4,9 @@
    itself: the coin hops, its green dot turns into a tick, a ping, and Next run moves on a month.
    Then the history steps back by one, so the picture is the one it started from, a month later;
    the dates move on as it is put back to rest, so it loops without a seam. */
-import type { Pt } from "../geometry";
-import { circ, INK, makeFig, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+import { circ, INK, type Pt, T } from "@/components/homepage/payments/figures/geometry";
+import { makeFig } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 const AUG = 7;
 

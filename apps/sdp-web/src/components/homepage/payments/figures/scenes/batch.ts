@@ -2,9 +2,9 @@
    Motion: the rows go, show again overhead without their ticks, then one after another, the
    nearest first, each comes down onto its slot; only once it is down does its tick light, with a
    ping. The picture ends as it began. */
-import type { Pt } from "../geometry";
-import { type Key, makeFig, rrect, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+import { type Pt, rrect, T } from "@/components/homepage/payments/figures/geometry";
+import { type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 /* the prototype's demo counterparties, with amounts */
 const WHO = ["Marcus Reid", "Lena Fischer", "Ana Souza"];

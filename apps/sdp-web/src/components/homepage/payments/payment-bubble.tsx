@@ -3,11 +3,11 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
+import bubble from "@/components/homepage/bubble.module.css";
+import { fitPill } from "@/components/homepage/bubble-motion";
+import { restartAttribute } from "@/components/homepage/restart-animation";
 import { useTranslations } from "@/i18n/provider";
 import { watchActive } from "@/lib/use-scene-active";
-import bubble from "../bubble.module.css";
-import { fitPill } from "../bubble-motion";
-import { restartAttribute } from "../restart-animation";
 import { KIND_ICONS, PAYMENT_KINDS, type PaymentKind } from "./kinds";
 import styles from "./payment-bubble.module.css";
 import { usePaymentKind } from "./payment-kind-context";

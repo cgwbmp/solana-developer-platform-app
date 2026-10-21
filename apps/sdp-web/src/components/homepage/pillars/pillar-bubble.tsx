@@ -3,9 +3,9 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
-import bubble from "../bubble.module.css";
-import { bubbleClockStart, runBubbleLoop } from "../bubble-motion";
-import { useRiseArrived } from "../rise";
+import bubble from "@/components/homepage/bubble.module.css";
+import { bubbleClockStart, runBubbleLoop } from "@/components/homepage/bubble-motion";
+import { useRiseArrived } from "@/components/homepage/rise";
 import styles from "./pillar-bubble.module.css";
 
 export type PillarBubbleKind = "coin" | "send" | "swap";

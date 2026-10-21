@@ -13,7 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Rise } from "../rise";
+import { Rise } from "@/components/homepage/rise";
 import styles from "./interfaces.module.css";
 import { RequestCard } from "./request-card";
 import { INTERFACE_SNIPPETS, type InterfaceMode } from "./snippets";

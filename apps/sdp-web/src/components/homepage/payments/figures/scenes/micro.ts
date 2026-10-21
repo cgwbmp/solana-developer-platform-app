@@ -3,8 +3,10 @@
    Motion: four calls in an even rhythm, then a breath. For each a short pulse of ink runs along
    the wire, the wallet's balance goes down a thousandth as it leaves, and as it arrives the price
    lights green while the calls paid go up by one. */
-import { attr, INK, type Key, makeFig, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+
+import { INK, T } from "@/components/homepage/payments/figures/geometry";
+import { attr, type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 export function microScene({ fonts, label, copy }: SceneInput): string {
   const CALLS = [0, 650, 1300, 1950];

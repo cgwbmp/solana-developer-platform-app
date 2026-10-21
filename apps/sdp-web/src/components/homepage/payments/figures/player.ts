@@ -1,6 +1,6 @@
+import { reflow } from "@/components/homepage/restart-animation";
 import { easeOutCubic } from "@/lib/easing";
 import { formatNumber } from "@/lib/number-format";
-import { reflow } from "../../restart-animation";
 
 /*
  * One figure's motion, as one cycle with `.live` on the svg; counters, sequences and

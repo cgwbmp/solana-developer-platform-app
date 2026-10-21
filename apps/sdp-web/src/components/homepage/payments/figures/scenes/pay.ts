@@ -5,9 +5,9 @@
    policy puck (its tick turns green with the arrival's dot), its shadow running on the floor
    below, and settles into Jane's wallet, which gives under it. The next time round the same chip
    goes to the bank instead and turns from USDC into USD over the puck: the off-ramp. */
-import { cubicPath, type Pt } from "../geometry";
-import { type Frame, INK, type Key, makeFig, rrect, T } from "../make-fig";
-import type { SceneInput } from "../scene-input";
+import { cubicPath, INK, type Pt, rrect, T } from "@/components/homepage/payments/figures/geometry";
+import { type Frame, type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
+import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
 
 type Route = {
   when: string;

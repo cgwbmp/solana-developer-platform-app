@@ -1,4 +1,4 @@
-import type { SignupLink } from "../homepage-links";
+import type { SignupLink } from "@/components/homepage/homepage-links";
 
 export type NavGround = "paper" | "night";
 

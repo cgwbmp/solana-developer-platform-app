@@ -2,7 +2,7 @@
  * Draws every payment kind's figure as SVG markup. Loaded with a dynamic import only when the
  * bench nears the screen, so the kit stays out of the initial bundle.
  */
-import type { PaymentKind } from "../kinds";
+import type { PaymentKind } from "@/components/homepage/payments/kinds";
 import type { FigFonts } from "./make-fig";
 import type { FigureCopy } from "./scene-input";
 import { batchScene } from "./scenes/batch";

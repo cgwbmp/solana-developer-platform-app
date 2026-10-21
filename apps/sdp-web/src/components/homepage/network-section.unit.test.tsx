@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/i18n/server", async () => {
   const { translate } = await import("@/i18n/translate");
-  const { default: messages } = await import("../../../messages/en/homepage.json");
+  const { default: messages } = await import("@/../messages/en/homepage.json");
   return {
     getTranslations: async () => (key: string, values?: Record<string, string | number>) =>
       translate(messages, key as never, values),
@@ -12,7 +12,7 @@ vi.mock("@/i18n/server", async () => {
 
 vi.mock("@/i18n/provider", async () => {
   const { translate } = await import("@/i18n/translate");
-  const { default: messages } = await import("../../../messages/en/homepage.json");
+  const { default: messages } = await import("@/../messages/en/homepage.json");
   return {
     useLocale: () => "en",
     useTranslations: () => (key: string, values?: Record<string, string | number>) =>

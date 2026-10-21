@@ -3,10 +3,10 @@
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
+import { FormHeadline } from "@/components/homepage/form-headline";
+import shared from "@/components/homepage/homepage.module.css";
 import { useTranslations } from "@/i18n/provider";
 import { useLazyScene } from "@/lib/use-scene-active";
-import { FormHeadline } from "../form-headline";
-import shared from "../homepage.module.css";
 import styles from "./builders.module.css";
 import { FilmLinks } from "./film-links";
 import { FILM_NAMES, SERIES_URL } from "./films";

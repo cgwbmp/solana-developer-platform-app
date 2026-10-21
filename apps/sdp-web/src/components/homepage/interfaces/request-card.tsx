@@ -2,7 +2,7 @@
 
 import { cn } from "@sdp/ui/cn";
 import { type CSSProperties, useEffect } from "react";
-import { useRiseArrived } from "../rise";
+import { useRiseArrived } from "@/components/homepage/rise";
 import { CodeBlock } from "./code-block";
 import styles from "./interfaces.module.css";
 import { type CodeLine, INTERFACE_SNIPPETS, type InterfaceSnippet, responseRows } from "./snippets";
