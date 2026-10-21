@@ -5,7 +5,7 @@ import { RAMP_PROVIDER_SUPPORT_DETAILS, type RampFiatCurrency } from "@sdp/types
 import { type CryptoRailId, SOLANA_CRYPTO_RAILS } from "@sdp/types/payment-rails";
 import type { PaymentRampQuote } from "@sdp/types/payments";
 import { addDecimalAmounts, subtractDecimalAmounts } from "#/decimal";
-import { SdpPaymentsError } from "#/errors";
+import { rampAmountLimitOf, SdpPaymentsError } from "#/errors";
 import { RAMP_PROVIDER_CLIENTS } from "#/ramps/index";
 import { replayExchanges } from "#/ramps/test-kit";
 import type {
@@ -173,6 +173,198 @@ describe("MoonpayRampClient currency codes", () => {
     await assert.rejects(
       client.createOfframpQuote(runtimeContext, { ...offrampInput, assetRail }),
       unsupported
+    );
+  });
+});
+
+describe("MoonpayRampClient on-ramp total", () => {
+  function answerBuyQuote(body: typeof QUOTE_RESPONSE & { totalAmount?: number }): void {
+    globalThis.fetch = async () => Response.json(body);
+  }
+
+  it("prices the widget's charge: by card, its fees out of the amount", async () => {
+    let requested: URL | undefined;
+    globalThis.fetch = async (input) => {
+      requested = new URL(String(input));
+      return Response.json({ ...QUOTE_RESPONSE, baseCurrencyAmount: 48.4 });
+    };
+
+    const estimate = await RAMP_PROVIDER_CLIENTS.moonpay.estimateOnramp(runtimeContext, {
+      assetRail: "sol.solana",
+      fiatCurrency: "USD",
+      fiatAmount: "50",
+    });
+
+    assert.equal(requested?.searchParams.get("areFeesIncluded"), "true");
+    assert.equal(requested?.searchParams.get("paymentMethod"), "credit_debit_card");
+    assert.equal(estimate.fiatAmount, "48.4");
+    assert.equal(estimate.totalFiatAmount, "50");
+  });
+
+  it("takes MoonPay's own total when it sends one", async () => {
+    answerBuyQuote({ ...QUOTE_RESPONSE, totalAmount: 51.61 });
+
+    const estimate = await RAMP_PROVIDER_CLIENTS.moonpay.estimateOnramp(runtimeContext, {
+      assetRail: "sol.solana",
+      fiatCurrency: "USD",
+      fiatAmount: "50",
+    });
+
+    assert.equal(estimate.totalFiatAmount, "51.61");
+  });
+
+  it("opens the buy widget on card, the method its estimate priced", async () => {
+    refuseProviderCalls();
+
+    const quote = await RAMP_PROVIDER_CLIENTS.moonpay.createOnrampQuote(
+      runtimeContext,
+      onrampInput
+    );
+
+    assert.equal(signedHostedUrl(quote).searchParams.get("paymentMethod"), "credit_debit_card");
+  });
+});
+
+describe("MoonpayRampClient off-ramp limits", () => {
+  // MoonPay's sandbox answers, 2026-10-20: a sale under the minimum is a 400
+  // naming it, while one over the maximum still quotes.
+  const UNDER_MINIMUM = {
+    errors: [
+      { property: "minSellFiatAmount", message: "16.18043935029837951066", children: [] },
+      { property: "fiatCurrencyCode", message: "usd", children: [] },
+      { property: "minSellCryptoAmount", message: "19.92405", children: [] },
+      { property: "cryptoCurrencyCode", message: "usdc_sol", children: [] },
+    ],
+    message: "The minimum order amount is 19.92405 USDC_SOL / $16.18",
+    type: "BadRequestError",
+  };
+  const SELL_QUOTE = {
+    baseCurrencyAmount: 25,
+    quoteCurrencyAmount: 20.69,
+    baseCurrencyPrice: 0.9873727923981503,
+    feeAmount: 3.99,
+    extraFeeAmount: 0,
+    baseCurrency: { code: "usdc_sol", minSellAmount: 19.92405, maxSellAmount: 10000 },
+  };
+
+  function answer(status: number, body: Record<string, unknown>): void {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+  }
+
+  function estimateUsdc(cryptoAmount: string) {
+    return RAMP_PROVIDER_CLIENTS.moonpay.estimateOfframp(runtimeContext, {
+      assetRail: "usdc.solana",
+      fiatCurrency: "USD",
+      cryptoAmount,
+    });
+  }
+
+  it("names MoonPay's minimum when it refuses a sale under it", async () => {
+    answer(400, UNDER_MINIMUM);
+
+    await assert.rejects(estimateUsdc("5"), (cause: unknown) => {
+      assert.deepEqual(rampAmountLimitOf(cause), {
+        reason: "amount_below_minimum",
+        limit: { amount: "19.92405", currency: "USDC" },
+      });
+      assert.ok(cause instanceof SdpPaymentsError);
+      assert.doesNotMatch(cause.message, /USDC_SOL/);
+      return true;
+    });
+  });
+
+  it("refuses a sale over the maximum MoonPay would still quote", async () => {
+    answer(200, { ...SELL_QUOTE, baseCurrencyAmount: 10001 });
+
+    await assert.rejects(estimateUsdc("10001"), (cause: unknown) => {
+      assert.deepEqual(rampAmountLimitOf(cause), {
+        reason: "amount_above_maximum",
+        limit: { amount: "10000", currency: "USDC" },
+      });
+      return true;
+    });
+  });
+
+  it("quotes the payout for a sale inside both bounds", async () => {
+    answer(200, SELL_QUOTE);
+
+    const estimate = await estimateUsdc("25");
+
+    assert.equal(estimate.fiatAmount, "20.69");
+    assert.equal(estimate.cryptoAmount, "25");
+  });
+
+  it("keeps any other refusal a plain provider error", async () => {
+    answer(400, { message: "Invalid currency", type: "BadRequestError" });
+
+    await assert.rejects(estimateUsdc("25"), (cause: unknown) => {
+      assert.equal(rampAmountLimitOf(cause), null);
+      assert.ok(cause instanceof SdpPaymentsError);
+      assert.equal(cause.code, "BAD_REQUEST");
+      return true;
+    });
+  });
+});
+
+describe("MoonpayRampClient sale cancel", () => {
+  const TRANSFER_ID = "xfr_0f1e2d3c-4b5a-4c6d-8e7f-9a0b1c2d3e4f";
+
+  function answerCancel(status: number): Array<{ url: string; init: RequestInit | undefined }> {
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    globalThis.fetch = async (input, init) => {
+      requests.push({ url: String(input), init });
+      return new Response(status === 204 ? null : JSON.stringify({ message: "x", type: "y" }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    return requests;
+  }
+
+  it("deletes the sale by SDP's id with the secret key", async () => {
+    const requests = answerCancel(204);
+
+    const outcome = await RAMP_PROVIDER_CLIENTS.moonpay.cancelOfframpSale(
+      runtimeContext,
+      TRANSFER_ID
+    );
+
+    assert.equal(outcome, "canceled");
+    assert.equal(requests.length, 1);
+    const [request] = requests;
+    assert.ok(request);
+    assert.equal(request.url, `https://api.moonpay.com/v3/sell_transactions/ext/${TRANSFER_ID}`);
+    assert.equal(request.init?.method, "DELETE");
+    assert.equal(new Headers(request.init?.headers).get("Authorization"), `Api-Key ${SECRET_KEY}`);
+  });
+
+  it("reads no sale and a finished sale as answers, not failures", async () => {
+    answerCancel(404);
+    assert.equal(
+      await RAMP_PROVIDER_CLIENTS.moonpay.cancelOfframpSale(runtimeContext, TRANSFER_ID),
+      "not_found"
+    );
+    answerCancel(409);
+    assert.equal(
+      await RAMP_PROVIDER_CLIENTS.moonpay.cancelOfframpSale(runtimeContext, TRANSFER_ID),
+      "not_cancelable"
+    );
+  });
+
+  it("throws when MoonPay refuses the key", async () => {
+    answerCancel(401);
+
+    await assert.rejects(
+      RAMP_PROVIDER_CLIENTS.moonpay.cancelOfframpSale(runtimeContext, TRANSFER_ID),
+      (cause: unknown) => {
+        assert.ok(cause instanceof SdpPaymentsError);
+        assert.equal(cause.code, "PROVIDER_NOT_CONFIGURED");
+        return true;
+      }
     );
   });
 });

@@ -161,6 +161,8 @@ export type RampSettlementEvent =
       kind: "settled";
       /** Amount the receiving side settled for, in display units — fiat for off-ramp, crypto for on-ramp. */
       receivedAmount?: string;
+      /** Off-ramp only: the ISO currency of `receivedAmount`, when the provider names it. */
+      receivedCurrency?: string;
       settlement?: RampTransferSettlement;
       /**
        * The crypto rail the provider reports: delivered on-ramp, sold off-ramp.
@@ -190,6 +192,21 @@ export type RampSettlementEvent =
        */
       unmappedStatus?: string;
     };
+
+/** Provider outcomes the audit ledger records: the sale or buy settled, failed or expired. */
+export const RAMP_AUDITED_SETTLEMENT_KINDS = [
+  "settled",
+  "failed",
+  "expired",
+] as const satisfies readonly RampSettlementEvent["kind"][];
+
+export type RampAuditedSettlementKind = (typeof RAMP_AUDITED_SETTLEMENT_KINDS)[number];
+
+export function isAuditedRampSettlementKind(
+  kind: RampSettlementEvent["kind"]
+): kind is RampAuditedSettlementKind {
+  return RAMP_AUDITED_SETTLEMENT_KINDS.some((audited) => audited === kind);
+}
 
 /**
  * Runtime context for quote/execute calls. Providers read their own credentials
@@ -258,6 +275,9 @@ export type ValidateCounterpartyOptions =
       collectedData?: CollectedFieldData;
     };
 
+/** What the provider answered when SDP canceled the sale it holds for a canceled transfer. */
+export type RampProviderCancelOutcome = "canceled" | "not_found" | "not_cancelable";
+
 /** The stored transfer a status lookup asks its provider about. */
 export interface RampTransferLookup {
   /** SDP's transfer id, which a provider that takes a caller reference stores with it. */
@@ -289,6 +309,16 @@ export interface RampProvider {
     ctx: RampRuntimeContext,
     lookup: RampTransferLookup
   ) => Promise<readonly RampSettlementEvent[]>;
+  /**
+   * Optional: cancels the sale the provider holds under SDP's transfer id,
+   * once SDP has canceled its own record. `not_found` when the customer never
+   * confirmed a sale; throws when SDP could not ask.
+   */
+  cancelOfframpSale?: (
+    ctx: RampRuntimeContext,
+    transferId: string,
+    signal?: AbortSignal
+  ) => Promise<RampProviderCancelOutcome>;
   /**
    * Support-matrix generation hook (ramp-support script only, never runtime):
    * fetches the provider's raw support dumps via `context.fetchJson` and

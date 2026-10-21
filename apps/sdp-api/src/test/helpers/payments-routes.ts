@@ -3,6 +3,7 @@ import * as feePaymentChainReads from "@sdp/fee-payment/chain-reads";
 import { KoraAdapter } from "@sdp/fee-payment/kora.adapter";
 import type { SponsorshipProviderConfiguration } from "@sdp/fee-payment/port";
 import { hashString } from "@sdp/payments/hash";
+import { RAMP_PROVIDER_CLIENTS } from "@sdp/payments/ramps";
 import * as solanaRpc from "@sdp/rpc/solana";
 import { parseDecimalAmount } from "@sdp/solana/amount";
 import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
@@ -68,6 +69,9 @@ export function testKoraAdapter(
     methods
   );
 }
+
+/** MoonPay's sale cancel, answered here so a route test never reaches MoonPay. */
+export const cancelMoonpaySaleMock = vi.spyOn(RAMP_PROVIDER_CLIENTS.moonpay, "cancelOfframpSale");
 
 export const createOrgSignerForCustodyWalletMock = vi.spyOn(
   solanaSigner,
@@ -566,6 +570,7 @@ export function installPaymentsRouteTestHooks(): void {
     createOrgSignerForCustodyWalletMock.mockResolvedValue(
       createNoopSigner(address("8dHEsGLpCZHZbXnFVvqWq4kMfM2pVDuNrXvVJVhQWRGZ"))
     );
+    cancelMoonpaySaleMock.mockResolvedValue("canceled");
 
     originalMoonPaySandboxApiKey = env.MOONPAY_SANDBOX_API_KEY;
     originalMoonPaySandboxSecretKey = env.MOONPAY_SANDBOX_SECRET_KEY;

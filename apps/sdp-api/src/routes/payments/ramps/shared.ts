@@ -1,5 +1,5 @@
 import type { CounterpartyRow } from "@sdp/payments/counterparty";
-import { SdpPaymentsError } from "@sdp/payments/errors";
+import { rampAmountLimitOf, SdpPaymentsError } from "@sdp/payments/errors";
 import type { RampRuntimeContext } from "@sdp/payments/ramps/types";
 import { redactCredentialString } from "@sdp/redaction/credentials";
 import { isStagedProviderRefusalReason } from "@sdp/types/custody";
@@ -38,6 +38,7 @@ import {
 } from "@/routes/payments/wallets";
 import { describeError, logEvent, paymentsErrorDiagnostics } from "@/runtime/money-path-events";
 import { rampTransferTokenMint } from "@/services/payment-operation.service";
+import { auditedRampWrite } from "@/services/payments/ramp-audit";
 import { loadProjectProviderVerdict } from "@/services/provider-availability.service";
 import { admitRamp } from "./admission";
 import type { createOfframpQuoteSchema } from "./offramp/schemas";
@@ -228,35 +229,37 @@ export async function persistRampQuoteTransfer(
   const apiKey = c.get("apiKey");
   let created: PaymentTransferRow | null;
   try {
-    created = await repository.createTransfer({
-      id: input.transferId,
-      organizationId: binding.organizationId,
-      projectId: binding.projectId,
-      custodyWalletId: binding.custodyWalletId,
-      walletId: binding.walletId,
-      counterpartyId: binding.counterpartyId,
-      sourceAddress: binding.sourceAddress,
-      destinationAddress: binding.destinationAddress,
-      token: binding.token,
-      amount: binding.amount,
-      memo: null,
-      type: input.direction,
-      direction: isOnramp ? "inbound" : "outbound",
-      status: input.quote.status,
-      provider: input.quote.provider,
-      providerReference: input.quote.id,
-      deliveryMode: input.quote.deliveryMode,
-      fiatCurrency: binding.fiatCurrency,
-      fiatAmount: binding.fiatAmount,
-      rampsMemo: input.rampsMemo,
-      providerData: {
-        ...(input.providerData ?? {}),
-      },
-      serializedTx: null,
-      signature: null,
-      slot: null,
-      initiatedByKeyId: apiKey ? apiKey.id : null,
-    });
+    created = await auditedRampWrite(c, "create", (audited) =>
+      audited.createTransfer({
+        id: input.transferId,
+        organizationId: binding.organizationId,
+        projectId: binding.projectId,
+        custodyWalletId: binding.custodyWalletId,
+        walletId: binding.walletId,
+        counterpartyId: binding.counterpartyId,
+        sourceAddress: binding.sourceAddress,
+        destinationAddress: binding.destinationAddress,
+        token: binding.token,
+        amount: binding.amount,
+        memo: null,
+        type: input.direction,
+        direction: isOnramp ? "inbound" : "outbound",
+        status: input.quote.status,
+        provider: input.quote.provider,
+        providerReference: input.quote.id,
+        deliveryMode: input.quote.deliveryMode,
+        fiatCurrency: binding.fiatCurrency,
+        fiatAmount: binding.fiatAmount,
+        rampsMemo: input.rampsMemo,
+        providerData: {
+          ...(input.providerData ?? {}),
+        },
+        serializedTx: null,
+        signature: null,
+        slot: null,
+        initiatedByKeyId: apiKey ? apiKey.id : null,
+      })
+    );
   } catch (error) {
     // The (provider, provider_reference) unique index spans all tenants: a
     // reference already bound outside this tenant's scope surfaces here.
@@ -314,6 +317,10 @@ export async function estimateAcrossProviders(
       } catch (error) {
         if (error instanceof SdpPaymentsError && error.code === "ESTIMATE_NOT_AVAILABLE") {
           return { provider, status: "unsupported" };
+        }
+        const outOfRange = rampAmountLimitOf(error);
+        if (outOfRange !== null && error instanceof Error) {
+          return { provider, status: "error", error: error.message, ...outOfRange };
         }
         const cause = error instanceof Error ? error : new Error(String(error));
         logEvent("error", {

@@ -273,11 +273,38 @@ export interface PaymentsRepository {
    * not a ramp transfer of those types).
    */
   transitionRampTransfer(input: RampTransferTransitionInput): Promise<PaymentTransferRow | null>;
-  /** Fair, cluster-scoped page of provider-settled rows awaiting chain proof. */
+  /**
+   * Returns a claimed off-ramp deposit to awaiting its deposit, undoing the
+   * claim, only while the row holds no signed bytes, signature or submission
+   * start (proof that nothing could have reached the chain) and the provider
+   * has not failed the sale. Null otherwise.
+   */
+  releaseOfframpDepositClaim(input: {
+    transferId: string;
+    organizationId: string;
+    projectId: string;
+    updatedAt: string;
+  }): Promise<PaymentTransferRow | null>;
+  /**
+   * Fair, cluster-scoped page of provider-settled rows awaiting chain proof.
+   * A row held for a delivery mismatch waits for a new provider settlement.
+   */
   listRampTransfersToVerify(params: {
     environment: SdpEnvironment;
     limit: number;
   }): Promise<PaymentTransferRow[]>;
+  /**
+   * Holds a settling ramp whose provider settlement the chain contradicts, so
+   * the verifier stops asking about it: records `deliveryMismatch` only while
+   * the row still carries the settlement the verifier judged. Returns whether
+   * it held the row.
+   */
+  holdRampDeliveryMismatch(params: {
+    transferId: string;
+    providerSettlement: Record<string, unknown>;
+    mismatch: Record<string, unknown>;
+    updatedAt: string;
+  }): Promise<boolean>;
   /** Rotate polled rows without changing their business updated_at or status. */
   markRampTransfersVerificationPolled(params: {
     transferIds: readonly string[];
