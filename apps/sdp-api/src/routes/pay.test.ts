@@ -116,7 +116,6 @@ describe("Public payment request routes", () => {
     ).createPaymentRequest({
       organizationId: TEST_ORG.id,
       projectId: wallet.projectId,
-      counterpartyId: null,
       custodyWalletId: wallet.custodyWalletId,
       walletId: wallet.walletId,
       destinationAddress: wallet.publicKey,
