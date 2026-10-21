@@ -8,6 +8,11 @@ import type { StatusTone } from "@sdp/ui/status-text";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 
+/** Whether a transfer brought value into the wallet: a buy, or anything inbound. */
+export function isInboundTransfer(transfer: PaymentTransferSummary): boolean {
+  return transfer.type === "onramp" || transfer.direction === "inbound";
+}
+
 /**
  * How each transfer status reads in a refresh list. Finer than the shared success / pending /
  * danger / neutral tone: a transfer the rails are moving ("processing", "settling") is
@@ -95,15 +100,22 @@ export function formatDecimalAmount(value: string, locale?: string): string {
 }
 
 /**
- * What a sale paid out, for display: the provider's reported payout once it
- * pays, else the quote, and null while neither is known.
+ * A ramp's fiat side: the provider's reported payout once a sale pays, else
+ * the quote, and null while neither is known.
  */
-export function saleFiatLabel(transfer: PaymentTransferSummary, locale?: string): string | null {
+export function rampFiatSide(
+  transfer: PaymentTransferSummary
+): { amount: string; currency: string } | null {
   const quoted =
     transfer.fiatAmount && transfer.fiatCurrency
       ? { amount: transfer.fiatAmount, currency: transfer.fiatCurrency }
       : null;
-  const sold = transfer.fiatPayout ?? quoted;
+  return transfer.fiatPayout ?? quoted;
+}
+
+/** What a sale paid out, for display (see `rampFiatSide`). */
+export function saleFiatLabel(transfer: PaymentTransferSummary, locale?: string): string | null {
+  const sold = rampFiatSide(transfer);
   return sold ? `${formatDecimalAmount(sold.amount, locale)} ${sold.currency.toUpperCase()}` : null;
 }
 
