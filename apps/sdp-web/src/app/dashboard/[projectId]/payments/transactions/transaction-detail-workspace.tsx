@@ -37,6 +37,7 @@ import { PAYMENT_REQUESTS_HREF } from "@/lib/payments-routes";
 import { getRampProviderLabel } from "@/lib/ramps";
 import { useProjectHref } from "@/lib/use-dashboard-project";
 import { useSolanaCluster } from "@/lib/use-solana-cluster";
+import { RampOpenSale, useLiveRampTransfer } from "./ramp-open-sale";
 import type { PaymentTransferDetail } from "./transaction-detail.data";
 import { TRANSACTION_MODULE_HREFS, walletHref } from "./transaction-module-hrefs.redesign";
 import { isPaymentTransferStatus, useTransactionStatus } from "./transaction-status";
@@ -204,12 +205,21 @@ function useTransactionSummary(
   return { status, amount, soldCrypto, direction, contact, title, why };
 }
 
+/** A payment request's deposit waits on its payer; a ramp waits on its provider instead. */
+function awaitsRequestPayment(transaction: UnifiedTransaction): boolean {
+  return (
+    transaction.moduleStatus === "awaiting_payment" &&
+    transaction.kind !== "onramp" &&
+    transaction.kind !== "offramp"
+  );
+}
+
 /** Whether the band has anything to offer: the explorer, the wallet, Requests, the module. */
 function hasTransactionAction(transaction: UnifiedTransaction): boolean {
   return (
     transaction.signature !== null ||
     (transaction.moduleStatus === "failed" && transaction.custodyWalletId !== null) ||
-    transaction.moduleStatus === "awaiting_payment" ||
+    awaitsRequestPayment(transaction) ||
     transaction.module !== "payments"
   );
 }
@@ -239,7 +249,7 @@ function TransactionActions({ transaction }: { transaction: UnifiedTransaction }
           </Link>
         </Button>
       ) : null}
-      {transaction.moduleStatus === "awaiting_payment" ? (
+      {awaitsRequestPayment(transaction) ? (
         <Button asChild variant="outline" size="sm">
           <Link href={href(PAYMENT_REQUESTS_HREF)}>
             {t("DashboardPayments.transactionDetail.openRequests")}
@@ -272,6 +282,13 @@ function NetworkFee({ fee }: { fee: number | null | undefined }) {
 }
 
 /** The record's two columns: how it moved (direction, fee, source, memo) and between whom. */
+/** The wallet a transaction moved through: its label, else its shortened id. */
+function walletLabelOf(transaction: UnifiedTransaction): string | null {
+  return transaction.custodyWalletId === null
+    ? null
+    : (transaction.custodyWalletLabel ?? shortenAddress(transaction.custodyWalletId));
+}
+
 function TransactionParties({
   transaction,
   transfer,
@@ -284,10 +301,7 @@ function TransactionParties({
   contact: string | null;
 }) {
   const t = useTranslations();
-  const wallet =
-    transaction.custodyWalletId === null
-      ? null
-      : (transaction.custodyWalletLabel ?? shortenAddress(transaction.custodyWalletId));
+  const wallet = walletLabelOf(transaction);
   const memo = memoText(transfer);
   return (
     <RecordColumns>
@@ -456,8 +470,8 @@ export function TransactionDetailWorkspace({
 }
 
 function TransactionRecord({
-  transaction,
-  transfer,
+  transaction: initialTransaction,
+  transfer: initialTransfer,
   issuedTokensByMint,
   counterpartyName = null,
 }: {
@@ -468,6 +482,19 @@ function TransactionRecord({
   counterpartyName?: string | null;
 }) {
   const t = useTranslations();
+  const liveTransfer = useLiveRampTransfer(initialTransfer);
+  const transfer = liveTransfer;
+  // A live ramp's state replaces the server's snapshot of it.
+  const transaction: UnifiedTransaction =
+    initialTransaction.module === "payments" &&
+    liveTransfer &&
+    (liveTransfer.type === "onramp" || liveTransfer.type === "offramp")
+      ? {
+          ...initialTransaction,
+          moduleStatus: liveTransfer.status,
+          signature: liveTransfer.signature,
+        }
+      : initialTransaction;
   const summary = useTransactionSummary(
     transaction,
     transfer,
@@ -494,6 +521,9 @@ function TransactionRecord({
             ) : undefined
           }
         />
+        {transfer ? (
+          <RampOpenSale transfer={transfer} walletLabel={walletLabelOf(transaction)} />
+        ) : null}
         <RecordAmount
           label={t("DashboardPayments.transactions.amount")}
           muted={summary.amount === null}
