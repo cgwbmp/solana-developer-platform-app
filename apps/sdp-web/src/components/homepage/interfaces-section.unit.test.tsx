@@ -50,6 +50,10 @@ const links = {
   llms: "https://platform.solana.com/docs/ai/llms.txt",
 };
 
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const copy = {
   execute: { title: "Execute mode", body: "Execute body", status: "200 · confirmed" },
   prepare: { title: "Prepare mode", body: "Prepare body", status: "200 · ready to sign" },
@@ -145,13 +149,18 @@ describe("interface snippets", () => {
 
   it.each(INTERFACE_SNIPPETS)("$method $path is a public API route", (snippet) => {
     expect(publicSource).toMatch(
-      new RegExp(`method: "${snippet.method.toLowerCase()}",\\s*path: "${snippet.path}"`)
+      new RegExp(
+        `method: "${snippet.method.toLowerCase()}",\\s*path: "${escapeRegExp(snippet.path)}"`
+      )
     );
   });
 
   it.each(INTERFACE_SNIPPETS)("$mode calls its own path on the public host", (snippet) => {
-    const concrete = snippet.path.replace(/\{[^}]+\}/g, "[^/\\s]+").replace(/\//g, "\\/");
-    const url = new RegExp(`${DEFAULT_SDP_API_URL.replace(/\./g, "\\.")}${concrete}`);
+    const concrete = snippet.path
+      .split(/\{[^}]+\}/)
+      .map(escapeRegExp)
+      .join("[^/\\s]+");
+    const url = new RegExp(`${escapeRegExp(DEFAULT_SDP_API_URL)}${concrete}`);
     for (const request of [snippet.request, snippet.narrowRequest]) {
       const text = request.map(lineText).join("\n");
       expect(text).toMatch(url);
