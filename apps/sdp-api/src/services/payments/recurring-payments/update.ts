@@ -66,7 +66,7 @@ import { getLogger } from "@/runtime/logger";
 import { createSigningService } from "@/services/domain/signing.service";
 import { parseU64String } from "@/services/payment-operation.service";
 import { resolveSolanaCounterpartyAccount } from "@/services/payments/counterparty-account-resolution";
-import { loadPaymentMint } from "@/services/payments/token-amount";
+import { loadPaymentMint, parseStaticPaymentAmount } from "@/services/payments/token-amount";
 import { createOrgSignerForCustodyWallet } from "@/services/solana/signer";
 import {
   createSponsorshipFeePayment,
@@ -77,7 +77,7 @@ import type { Env } from "@/types/env";
 import { recoverOrBlockLifecycleCollection } from "./collection";
 import {
   assertRecurringPaymentSourceWallet,
-  assertRecurringPaymentTokenMint,
+  assertRecurringPaymentTokenAdmitted,
   confirmSubscriptionSignature,
   createSubscriptionStepStore,
   isSubscriptionDelegationCanceled,
@@ -91,6 +91,7 @@ import {
   requireUpdatedAttempt,
   requireUpdatedPlan,
   requireUpdatedSubscription,
+  resolveRecurringPaymentTokenMint,
   type SubscriptionStep,
   savedStepSend,
   sendSubscriptionInstructions,
@@ -101,6 +102,19 @@ import {
 export interface RecurringPaymentUpdateIdempotency {
   key: string;
   fingerprint: string;
+}
+
+async function sendRecurringPaymentUpdateInstructions(
+  input: Parameters<typeof sendSubscriptionInstructions>[0] & { mint: Address }
+): Promise<Signature> {
+  const { mint, ...submission } = input;
+  await assertRecurringPaymentTokenAdmitted({
+    env: submission.env,
+    organizationId: submission.organizationId,
+    projectId: submission.projectId,
+    mint,
+  });
+  return sendSubscriptionInstructions(submission);
 }
 
 const recurringPaymentUpdateSnapshotSchema = z.object({
@@ -142,7 +156,7 @@ type ResolvedRecurringPaymentUpdate = {
   counterpartyId: string;
   counterpartyAccountId: string;
   destinationAddress: string;
-  token: string;
+  token: Address;
   amount: string;
   periodHours: number;
   firstCollectionAt: string | null;
@@ -303,6 +317,7 @@ async function resolveRecurringPaymentUpdate(input: {
   sourceWallet: CustodyWallet;
   nextSourceWallet?: CustodyWallet;
   request: UpdatePaymentRecurringPaymentRequest;
+  recoveringStaleUpdate: boolean;
 }): Promise<ResolvedRecurringPaymentUpdate> {
   const finalSourceWallet =
     input.nextSourceWallet === undefined ? input.sourceWallet : input.nextSourceWallet;
@@ -325,15 +340,14 @@ async function resolveRecurringPaymentUpdate(input: {
   const accountChanged =
     counterpartyId !== input.recurringPayment.counterparty_id ||
     counterpartyAccountId !== input.recurringPayment.counterparty_account_id;
-  const [token, destination] = await Promise.all([
-    input.request.token !== undefined
-      ? assertRecurringPaymentTokenMint(
-          input.request.token,
-          input.organizationId,
-          input.projectId,
-          input.env
-        )
-      : input.recurringPayment.token,
+  const amount =
+    input.request.amount === undefined ? input.recurringPayment.amount : input.request.amount;
+  const token = resolveRecurringPaymentTokenMint(
+    input.request.token === undefined ? input.recurringPayment.token : input.request.token
+  );
+  // Recovery settles saved work first; each remaining new send checks token admission below.
+  const admitsToken = !input.recoveringStaleUpdate;
+  const [destination] = await Promise.all([
     accountChanged
       ? resolveSolanaCounterpartyAccount({
           env: input.env,
@@ -343,9 +357,16 @@ async function resolveRecurringPaymentUpdate(input: {
           counterpartyAccountId,
         })
       : { destinationAddress: input.recurringPayment.destination_address },
+    admitsToken
+      ? assertRecurringPaymentTokenAdmitted({
+          mint: token,
+          organizationId: input.organizationId,
+          projectId: input.projectId,
+          env: input.env,
+        })
+      : null,
+    parseStaticPaymentAmount(amount, token),
   ]);
-  const amount =
-    input.request.amount === undefined ? input.recurringPayment.amount : input.request.amount;
   const periodHours =
     input.request.periodHours === undefined
       ? input.recurringPayment.period_hours
@@ -978,7 +999,8 @@ async function runMetadataScheduleUpdate(input: {
         pullers: onChainPlan.data.data.pullers,
         status: parsePlanStatus(onChainPlan.data.status),
       });
-      planUpdateSignature = await sendSubscriptionInstructions({
+      planUpdateSignature = await sendRecurringPaymentUpdateInstructions({
+        mint: input.resolved.token,
         movement: "recurring.update",
         env: input.env,
         organizationId: input.organizationId,
@@ -1065,7 +1087,8 @@ async function prepareSubscriptionAuthorityForUpdate(input: {
         mint: input.mint,
         tokenProgram: input.tokenProgram,
       });
-  const initSignature = await sendSubscriptionInstructions({
+  const initSignature = await sendRecurringPaymentUpdateInstructions({
+    mint: input.mint,
     movement: "recurring.update",
     env: input.env,
     organizationId: input.organizationId,
@@ -1457,10 +1480,10 @@ async function runReplacementUpdate(input: {
   }
   const owner = assertValidAddress(input.resolved.sourceWallet.publicKey, "sourceAddress");
   const destination = assertValidAddress(input.resolved.destinationAddress, "destinationAddress");
-  const mint = assertValidAddress(input.resolved.token, "token");
+  const mint = input.resolved.token;
   const paymentMint = await loadPaymentMint(mint);
   const { tokenProgram } = paymentMint;
-  const sourceTokenAccount = await resolveSourceTokenAccountOrAta(rpc, owner, mint, paymentMint);
+  const sourceTokenAccount = await resolveSourceTokenAccountOrAta(owner, mint, paymentMint);
   const amountBaseUnits = paymentMint.toBaseUnits(input.resolved.amount);
   if (amountBaseUnits <= 0n) {
     throw badRequest("Subscription amount must be greater than zero");
@@ -1540,7 +1563,8 @@ async function runReplacementUpdate(input: {
       pullers: [owner],
       tokenProgram,
     });
-    planCreationSignature = await sendSubscriptionInstructions({
+    planCreationSignature = await sendRecurringPaymentUpdateInstructions({
+      mint,
       movement: "recurring.update",
       env: input.env,
       organizationId: input.organizationId,
@@ -1699,7 +1723,8 @@ async function runReplacementUpdate(input: {
       subscriber: sourceSigner,
       tokenMint: mint,
     });
-    authorizationSignature = await sendSubscriptionInstructions({
+    authorizationSignature = await sendRecurringPaymentUpdateInstructions({
+      mint,
       movement: "recurring.update",
       env: input.env,
       organizationId: input.organizationId,
@@ -2109,7 +2134,10 @@ export async function updateRecurringPayment(input: {
     if (input.request.nextCollectionDueAt !== undefined) {
       throw badRequest("nextCollectionDueAt can only be updated after activation");
     }
-    const resolved = await resolveRecurringPaymentUpdate(input);
+    const resolved = await resolveRecurringPaymentUpdate({
+      ...input,
+      recoveringStaleUpdate: false,
+    });
     return updatePendingRecurringPayment({
       env: input.env,
       organizationId: input.organizationId,
@@ -2146,15 +2174,16 @@ export async function updateRecurringPayment(input: {
   assertRecurringPaymentUpdateStatus(settled.recurringPayment, new Date().toISOString());
   assertRecurringPaymentSourceWallet(settled.recurringPayment, input.sourceWallet);
 
+  const recoveringStaleUpdate = isUpdatingRecurringPaymentStatus(settled.recurringPayment.status);
   const resolved = await resolveRecurringPaymentUpdate({
     ...input,
     recurringPayment: settled.recurringPayment,
+    recoveringStaleUpdate,
   });
   const sourceChanged = resolved.changedFields.includes("sourceCustodyWalletId");
   const mode = requestedActiveUpdateMode(resolved.changedFields);
   const requiresRuntimeExecution =
     mode === "replacement" || resolved.metadataUri !== settled.recurringPayment.metadata_uri;
-  const recoveringStaleUpdate = isUpdatingRecurringPaymentStatus(settled.recurringPayment.status);
   if (requiresRuntimeExecution) {
     await admitUpdateExecution({
       env: input.env,

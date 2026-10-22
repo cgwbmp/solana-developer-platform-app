@@ -14,7 +14,12 @@ import {
   type StubMint,
   scaledUiAmountConfig,
 } from "@/test/helpers/token-mints";
-import { loadPaymentAmountConverter, readStaticAmountMintDecimals } from "./token-amount";
+import {
+  loadPaymentAmountConverter,
+  loadPaymentMint,
+  loadPaymentMintFacts,
+  parseStaticPaymentAmount,
+} from "./token-amount";
 
 const MINT = syntheticAddress(1);
 const CLOCK_UNIX_TIMESTAMP = 1_750_000_000n;
@@ -96,6 +101,17 @@ describe("loadPaymentAmountConverter", () => {
     expect(rpc.requests).toEqual([]);
   });
 
+  it.each([WELL_KNOWN_TOKENS.USDG, WELL_KNOWN_TOKENS.PYUSD])(
+    "keeps $symbol supported while fee handling is deferred",
+    async (token) => {
+      const mint = token.mints.devnet;
+      if (mint === undefined) throw new Error("Fixture requires a devnet mint");
+      const convert = await inSandboxScope(() => loadPaymentAmountConverter(address(mint.address)));
+      expect(convert("1.5")).toBe(1500000n);
+      expect(rpc.requests).toEqual([]);
+    }
+  );
+
   it("reads a well-known mint the scope's cluster does not declare from the chain", async () => {
     const usdsMainnetMint = address(WELL_KNOWN_TOKENS.USDS.mints["mainnet-beta"].address);
     respondMintAccounts(rpc, {
@@ -120,6 +136,18 @@ describe("loadPaymentAmountConverter", () => {
       await expect(inSandboxScope(() => loadPaymentAmountConverter(MINT))).rejects.toMatchObject({
         code: "BAD_REQUEST",
         statusCode: 400,
+      });
+      expect(accountInfoReads()).toEqual([MINT]);
+    }
+  );
+
+  it.each([SCALED_BY_TWO_UNTIL_LATER, INTEREST_BEARING_CONFIG])(
+    "reads facts for recovery without admitting a new payment ($__kind)",
+    async (extension) => {
+      serveMint({ decimals: 6, extensions: [extension] });
+      await inSandboxScope(async () => {
+        expect((await loadPaymentMintFacts(MINT)).toBaseUnits("1.5")).toBe(1500000n);
+        await expect(loadPaymentMint(MINT)).rejects.toMatchObject({ statusCode: 400 });
       });
       expect(accountInfoReads()).toEqual([MINT]);
     }
@@ -175,6 +203,31 @@ describe("loadPaymentAmountConverter", () => {
     }
   );
 
+  it("shares the mint read between concurrent admission and execution in one scope", async () => {
+    serveMint({ decimals: 6, extensions: null });
+    await inSandboxScope(async () => {
+      const [parsed, mint] = await Promise.all([
+        parseStaticPaymentAmount("1.5", MINT),
+        loadPaymentMint(MINT),
+      ]);
+      expect(parsed).toBe(1500000n);
+      expect(mint.toBaseUnits("1.5")).toBe(1500000n);
+    });
+    expect(accountInfoReads()).toEqual([MINT]);
+  });
+
+  it("does not remember failed lookups or reuse facts across scopes", async () => {
+    respondMintAccounts(rpc, { mints: new Map(), clockUnixTimestamp: CLOCK_UNIX_TIMESTAMP });
+    await inSandboxScope(async () => {
+      await expect(loadPaymentMint(MINT)).rejects.toMatchObject({ statusCode: 400 });
+      serveMint({ decimals: 6, extensions: null });
+      expect((await loadPaymentMint(MINT)).decimals).toBe(6);
+    });
+    serveMint({ decimals: 9, extensions: null });
+    expect((await inSandboxScope(() => loadPaymentMint(MINT))).decimals).toBe(9);
+    expect(accountInfoReads()).toEqual([MINT, MINT, MINT]);
+  });
+
   it("answers 400 for a mint with no account", async () => {
     respondMintAccounts(rpc, { mints: new Map(), clockUnixTimestamp: CLOCK_UNIX_TIMESTAMP });
 
@@ -182,35 +235,6 @@ describe("loadPaymentAmountConverter", () => {
       code: "BAD_REQUEST",
       statusCode: 400,
       message: "Token mint account does not exist",
-    });
-  });
-});
-
-describe("readStaticAmountMintDecimals", () => {
-  const rpc = installClusterRpcResponder();
-
-  function serveMint(mint: StubMint): void {
-    respondMintAccounts(rpc, {
-      mints: new Map([[MINT, mint]]),
-      clockUnixTimestamp: CLOCK_UNIX_TIMESTAMP,
-    });
-  }
-
-  it("returns a plain mint's decimals", async () => {
-    serveMint({ decimals: 9, extensions: null });
-
-    await expect(inSandboxScope(() => readStaticAmountMintDecimals(MINT))).resolves.toBe(9);
-  });
-
-  it.each([
-    { label: "scaled UI amount", extensions: [SCALED_BY_TWO_UNTIL_LATER] },
-    { label: "interest-bearing", extensions: [INTEREST_BEARING_CONFIG] },
-  ])("refuses a $label mint with 400", async ({ extensions }) => {
-    serveMint({ decimals: 6, extensions });
-
-    await expect(inSandboxScope(() => readStaticAmountMintDecimals(MINT))).rejects.toMatchObject({
-      code: "BAD_REQUEST",
-      statusCode: 400,
     });
   });
 });

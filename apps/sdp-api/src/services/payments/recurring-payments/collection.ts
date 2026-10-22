@@ -71,15 +71,12 @@ import {
 } from "@/lib/errors";
 import type { MoneyMovementRefusedError } from "@/lib/money-admission";
 import { createTenantScope } from "@/lib/tenant-scope";
-import {
-  resolveMintTokenProgram,
-  resolveSourceTokenAccountOrAta,
-} from "@/routes/payments/token-accounts";
+import { resolveSourceTokenAccountOrAta } from "@/routes/payments/token-accounts";
 import { getLogger } from "@/runtime/logger";
 import { logEvent } from "@/runtime/money-path-events";
 import { createSigningService } from "@/services/domain/signing.service";
 import type { TransferSignedSubmissionStore } from "@/services/payments/signed-submission";
-import { loadPaymentMint } from "@/services/payments/token-amount";
+import { loadPaymentMint, loadPaymentMintFacts } from "@/services/payments/token-amount";
 import { createOrgSignerForCustodyWallet } from "@/services/solana/signer";
 import {
   createSponsorshipFeePayment,
@@ -310,10 +307,9 @@ async function resolveDestinationTokenAccount(input: {
   destinationAddress: string;
   token: string;
 }): Promise<Address> {
-  const rpc = createClusterRpc();
   const destinationOwner = assertValidAddress(input.destinationAddress, "destinationAddress");
   const mint = assertValidAddress(input.token, "token");
-  const tokenProgram = await resolveMintTokenProgram(rpc, mint);
+  const { tokenProgram } = await loadPaymentMintFacts(mint);
   const [receiverAta] = await findAssociatedTokenPda({
     owner: destinationOwner,
     tokenProgram,
@@ -493,7 +489,7 @@ async function verifyRecurringPaymentCollection(input: {
 
   const rpc = createClusterRpc();
   const mint = assertValidAddress(input.recurringPayment.token, "token");
-  const { tokenProgram, toBaseUnits } = await loadPaymentMint(mint);
+  const { tokenProgram, toBaseUnits } = await loadPaymentMintFacts(mint);
   const amountBaseUnits = toBaseUnits(input.recurringPayment.amount);
   const confirmedTransaction = await getTransaction(rpc, input.signature);
   if (!confirmedTransaction) {
@@ -1748,12 +1744,7 @@ export async function collectRecurringPayment(input: {
 
     const paymentMint = await loadPaymentMint(mint);
     const { tokenProgram } = paymentMint;
-    const sourceTokenAccount = await resolveSourceTokenAccountOrAta(
-      rpc,
-      sourceOwner,
-      mint,
-      paymentMint
-    );
+    const sourceTokenAccount = await resolveSourceTokenAccountOrAta(sourceOwner, mint, paymentMint);
     const amountBaseUnits = paymentMint.toBaseUnits(input.recurringPayment.amount);
     if (amountBaseUnits <= 0n) {
       throw badRequest("Subscription amount must be greater than zero");

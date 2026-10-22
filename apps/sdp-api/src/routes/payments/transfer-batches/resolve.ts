@@ -1,9 +1,9 @@
 import { sumDecimalAmounts } from "@sdp/payments/decimal";
 import { createClusterRpc } from "@sdp/rpc/factory";
 import { assertValidAddress } from "@sdp/solana/address";
-import { AmountError, formatDecimalAmount, parseTokenAmount } from "@sdp/solana/amount";
+import { formatDecimalAmount } from "@sdp/solana/amount";
 import { SOL_DECIMALS, SOL_MINT } from "@sdp/types/well-known-tokens";
-import type { Address } from "@solana/kit";
+import { type Address, address } from "@solana/kit";
 import type { CounterpartyAccountRow } from "@/db/repositories/counterparty-account.repository";
 import { requireProjectId } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/errors";
@@ -27,7 +27,6 @@ import type {
   CreateTransferBatchInput,
   ResolvedBatchRequest,
   ResolvedRecipient,
-  Rpc,
   TokenContext,
   TransferBatchRecipientInput,
 } from "./types";
@@ -41,47 +40,35 @@ import type {
  * @returns The amount in token base units.
  */
 function parseRecipientAmount(amount: string, toBaseUnits: PaymentAmountConverter): bigint {
-  try {
-    const amountBaseUnits = toBaseUnits(assertPositivePaymentAmount(amount));
-    if (amountBaseUnits <= 0n) {
-      throw badRequest("Recipient amount must be greater than zero");
-    }
-    return amountBaseUnits;
-  } catch (error) {
-    if (error instanceof AmountError) {
-      throw badRequest(error.message);
-    }
-    throw error;
+  const amountBaseUnits = toBaseUnits(assertPositivePaymentAmount(amount));
+  if (amountBaseUnits <= 0n) {
+    throw badRequest("Recipient amount must be greater than zero");
   }
+  return amountBaseUnits;
 }
 
 /**
  * Resolves the batch token into transfer parameters: native SOL, or an SPL
  * mint with its token program and the source wallet's token account.
  *
- * @param rpc - Solana RPC client.
  * @param token - "SOL" or an SPL mint address.
  * @param sourceAddress - Source wallet address holding the token.
  * @returns The token context used to build transfer instructions.
  */
-async function resolveTokenContext(
-  rpc: Rpc,
-  token: string,
-  sourceAddress: Address
-): Promise<TokenContext> {
+async function resolveTokenContext(token: string, sourceAddress: Address): Promise<TokenContext> {
   if (isNativePaymentToken(token)) {
+    const { toBaseUnits } = await loadPaymentMint(address(SOL_MINT));
     return {
       kind: "sol",
       token: SOL_MINT,
       decimals: SOL_DECIMALS,
-      toBaseUnits: (amount) => parseTokenAmount(amount, SOL_DECIMALS),
+      toBaseUnits,
     };
   }
 
   const mintAddress = assertValidAddress(token, "token");
   const { tokenProgram, decimals, toBaseUnits } = await loadPaymentMint(mintAddress);
   const sourceTokenAccount = await resolveSourceTokenAccount(
-    rpc,
     sourceAddress,
     mintAddress,
     tokenProgram
@@ -222,7 +209,7 @@ export async function resolveBatchMovement(
 ): Promise<ResolvedBatchRequest> {
   const token = normalizePaymentToken(input.token);
   const rpc = createClusterRpc();
-  const tokenContext = await resolveTokenContext(rpc, token, authorized.sourceAddress);
+  const tokenContext = await resolveTokenContext(token, authorized.sourceAddress);
   const recipients = resolveRecipients({
     recipients: input.recipients,
     accounts: authorized.accounts,
