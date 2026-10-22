@@ -22,7 +22,10 @@ import {
 } from "@/test/helpers/sponsor-signing";
 import type { Env } from "@/types/env";
 import type { SponsorshipMovementScope } from "./sponsorship.service";
-import { BudgetedFeePayment } from "./sponsorship-budget.service";
+import {
+  BudgetedFeePayment,
+  sponsorshipProviderConfigFingerprint,
+} from "./sponsorship-budget.service";
 
 const logEvent = vi.hoisted(() => vi.fn());
 // The real reader queries Postgres; the admission decision itself stays real.
@@ -230,7 +233,9 @@ describe("BudgetedFeePayment", () => {
     await expect(feePayment.signAsFeePayer(buildTransaction())).rejects.toMatchObject({
       code: "RATE_LIMITED",
     });
-    expect(budgetRedis.reserve).toHaveBeenCalledWith(expect.objectContaining({ amount: 5_000 }));
+    expect(budgetRedis.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 1_005_000 })
+    );
     expect(provider.signAsFeePayer).not.toHaveBeenCalled();
     expect(repository.createReservation).toHaveBeenCalledOnce();
     expect(repository.markReleased).toHaveBeenCalledWith(
@@ -240,13 +245,13 @@ describe("BudgetedFeePayment", () => {
     );
   });
 
-  it("reserves network fee plus Kora outflow ceiling and denies before provider execution", async () => {
+  it("reserves network fee plus Kora's full outflow ceiling even when its policy denies transfers", async () => {
     const { feePayment, provider, repository, budgetRedis } = harness();
     vi.mocked(provider.getSponsorshipConfiguration).mockResolvedValueOnce({
       signerAddress: FEE_PAYER,
       maxAllowedLamports: 1_000_000n,
-      feePayerMayTransferLamports: true,
-      feePayerPolicy: { system: { allow_transfer: true } },
+      feePayerMayTransferLamports: false,
+      feePayerPolicy: { system: { allow_transfer: false } },
     });
     repository.resolvePolicies.mockResolvedValueOnce([
       { ...policy("global"), perTransactionLamports: 1_000_000 },
@@ -270,6 +275,18 @@ describe("BudgetedFeePayment", () => {
       1,
       "budget exceeded during admission"
     );
+  });
+
+  it("keeps the outflow flag as a provider configuration fingerprint input", () => {
+    const configuration = {
+      signerAddress: FEE_PAYER,
+      maxAllowedLamports: 1_000_000n,
+      feePayerMayTransferLamports: false,
+      feePayerPolicy: { system: { allow_transfer: false } },
+    };
+    expect(
+      sponsorshipProviderConfigFingerprint({ ...configuration, feePayerMayTransferLamports: true })
+    ).not.toBe(sponsorshipProviderConfigFingerprint(configuration));
   });
 
   it("retries the Redis gate under a refreshed policy without recreating the durable row", async () => {

@@ -102,6 +102,17 @@ const sponsoredGrantMetadataSchema = z.object({
   signature: z.string().min(1),
 });
 
+const sponsoredOutcomeAuditSchema = z.object({ status: z.string(), metadata: z.string() });
+
+const sponsoredIntentMetadataSchema = z.object({
+  auditPhase: z.literal("intent"),
+  target: z.object({
+    action: z.string(),
+    resourceType: z.string(),
+    metadata: z.record(z.string(), z.unknown()),
+  }),
+});
+
 describe("Public payment request routes", () => {
   installPaymentsRouteTestHooks();
   const rpc = installClusterRpcResponder();
@@ -491,6 +502,61 @@ describe("Public payment request routes", () => {
       expect(sponsoredGrantMetadataSchema.parse(JSON.parse(entry.metadata))).toMatchObject({
         sponsoredAccount: TEST_SOLANA_ADDRESSES.wallet2,
       });
+    });
+
+    it("files a fresh grant's audit intent under its tenant with the message digest and mint", async () => {
+      stubSponsorship();
+      const request = await createAwaitingPaymentRequest(SANDBOX_REQUEST_WALLET);
+
+      expect((await postTransaction(request.public_token)).status).toBe(200);
+
+      const rows = await getDb(env)
+        .prepare(
+          "SELECT action, organization_id, metadata FROM audit_logs WHERE resource_type = 'audit_ledger' AND metadata::jsonb -> 'target' ->> 'resourceId' = ?"
+        )
+        .bind(request.id)
+        .all();
+      expect(rows.results).toHaveLength(1);
+      const intent = sponsoredGrantAuditSchema.parse(rows.results[0]);
+      expect(intent.organization_id).toBe(TEST_ORG.id);
+      const metadata = sponsoredIntentMetadataSchema.parse(JSON.parse(intent.metadata));
+      expect(metadata.target).toMatchObject({ action: "sign", resourceType: "payment_request" });
+      expect(metadata.target.metadata).toMatchObject({
+        organizationId: TEST_ORG.id,
+        projectId: SANDBOX_REQUEST_WALLET.projectId,
+        tokenMint: SOL_MINT,
+        transactionDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
+      expect(metadata.target.metadata).not.toHaveProperty("token");
+    });
+
+    it("records a failed sponsor sign as a failure outcome and errors the route", async () => {
+      const sponsorship = stubSponsorship();
+      sponsorship.mockImplementationOnce(() => ({
+        providerId: "test",
+        getFeePayer: async () => TEST_MOCK_FEE_PAYER,
+        signAsFeePayer: () => Promise.reject(new Error("kora refused")),
+        getSponsorshipConfiguration: () => Promise.reject(new Error("not used")),
+        prepareOwnedSubmission: () => Promise.reject(new Error("not used")),
+      }));
+      const request = await createAwaitingPaymentRequest(SANDBOX_REQUEST_WALLET);
+
+      expect((await postTransaction(request.public_token)).status).toBe(500);
+
+      const rows = await getDb(env)
+        .prepare(
+          "SELECT status, metadata FROM audit_logs WHERE resource_type = 'payment_request' AND resource_id = ?"
+        )
+        .bind(request.id)
+        .all();
+      expect(rows.results).toHaveLength(1);
+      const outcome = sponsoredOutcomeAuditSchema.parse(rows.results[0]);
+      expect(outcome.status).toBe("failure");
+      expect(JSON.parse(outcome.metadata)).toMatchObject({
+        auditPhase: "outcome",
+        errorCode: "UNCLASSIFIED_ERROR",
+      });
+      expect(outcome.metadata).not.toContain("kora refused");
     });
 
     it("refuses and does not store the grant when its audit entry cannot be persisted", async () => {
