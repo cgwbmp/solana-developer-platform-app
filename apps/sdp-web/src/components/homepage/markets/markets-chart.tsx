@@ -106,13 +106,19 @@ export function MarketsChart() {
     const defi = rateAt(defiY, baseline, rect.height * DEFI_PEAK, 8);
     const treasuries = rateAt(treasuriesY, baseline, rect.height * TREASURIES_PEAK, 4.5);
 
+    const tip = tipRef.current;
+    const tipHalf = tip ? tip.offsetWidth / 2 : 0;
     scrub.style.setProperty("--x", `${(fx * 100).toFixed(2)}%`);
     if (defiDotRef.current) defiDotRef.current.style.top = `${defiY}px`;
     if (treasuriesDotRef.current) treasuriesDotRef.current.style.top = `${treasuriesY}px`;
-    if (tipRef.current) tipRef.current.style.top = `${Math.max(0, defiY - 58)}px`;
     if (defiRateRef.current) defiRateRef.current.textContent = formatPercent(locale, defi, 1);
     if (treasuriesRateRef.current) {
       treasuriesRateRef.current.textContent = formatPercent(locale, treasuries, 1);
+    }
+    if (tip) {
+      tip.style.top = `${Math.max(0, defiY - 58)}px`;
+      /* the label stays inside the chart at its ends, the cursor's line still under it */
+      tip.style.left = `${Math.min(Math.max(fx * rect.width, tipHalf), rect.width - tipHalf)}px`;
     }
     scrub.dataset.on = "true";
   }

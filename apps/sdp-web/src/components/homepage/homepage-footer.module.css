@@ -51,9 +51,11 @@
   list-style: none;
 }
 
+/* a finger tall at every width */
 .link {
-  display: block;
-  padding: 5px 0;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   font-size: 14px;
   color: var(--night-ink2);
   text-decoration: none;
@@ -74,13 +76,6 @@
   color: var(--night-ink3);
 }
 
-/* links get a finger's height on any touch screen */
-@media (pointer: coarse) {
-  .link {
-    padding-block: 8px;
-  }
-}
-
 @media (max-width: 1000px) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -92,14 +87,10 @@
   }
 }
 
-/* on a phone: two columns, the links a finger tall */
+/* on a phone: two columns */
 @media (max-width: 600px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .link {
-    padding-block: 8px;
   }
 
   .columnTitle,

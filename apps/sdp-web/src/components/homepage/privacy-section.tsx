@@ -8,12 +8,15 @@ import styles from "./privacy/privacy.module.css";
 import { PrivacyBubble } from "./privacy/privacy-bubble";
 import { Rise } from "./rise";
 
-/** The privacy deep dive: the words beside a green bubble that folds into a switch and turns on. */
+/**
+ * The privacy deep dive: the words beside a green bubble that folds into a switch and turns on. It
+ * closes the dark panel it shares with markets.
+ */
 export async function PrivacySection() {
   const t = await getTranslations();
 
   return (
-    <section id="privacy" data-ground="paper" className={shared.paper}>
+    <section id="privacy" data-ground="panel" className={styles.section}>
       <div className={cn(shared.wrap, styles.layout)}>
         <Rise index={0} className={styles.text}>
           <FormHeadline

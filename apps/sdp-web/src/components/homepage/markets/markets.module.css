@@ -1,17 +1,18 @@
 /*
  * Markets: the
  * page's three columns for the words, then the chart across the whole width with its key and
- * figures in its empty upper left.
+ * figures in its empty upper left. It opens the dark panel it shares with privacy: light words,
+ * the chart's grey lines turned up so they read on the dark.
  */
 .section {
-  /* small chart text, darkened from 50% ink so it reaches AA */
-  --chart-ink: #0f0f13a6;
+  --chart-ink: #fbfaf980;
 }
 
+/* privacy follows the chart closer than two sections apart */
 .layout {
   display: flex;
   flex-direction: column;
-  padding: var(--pad) 0;
+  padding: var(--pad) 0 calc(var(--pad) * 0.65);
 }
 
 /* the headline across two columns, the paragraph and its link in the third, on its first line */
@@ -78,12 +79,18 @@
   height: 20.7%;
 }
 
+/* the exported vectors of the treasuries line and the deployed mark are drawn for paper */
+.low,
+.deployed {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 .base {
   left: 0;
   right: 0;
   top: 91.25%;
   height: 1px;
-  background: #0f0f1326;
+  background: #ffffff26;
 }
 
 .deployed {
@@ -140,7 +147,7 @@
 
 .dotTreasuries {
   top: 67.4%;
-  background: #2a2830;
+  background: #e4e2ea;
 }
 
 .legend {
@@ -171,7 +178,7 @@
 }
 
 .keyTreasuries {
-  background: linear-gradient(90deg, #c9c6d1, #3a3842);
+  background: linear-gradient(90deg, #4a4852, #e4e2ea);
 }
 
 .axis {
@@ -209,14 +216,16 @@
 
 .stats > div + div {
   padding-left: clamp(24px, 3vw, 44px);
-  border-left: 1px solid var(--line);
+  border-left: 1px solid #ffffff1f;
 }
 
 .stats b {
   display: block;
   font: 400 clamp(40px, 4.4vw, 76px) / 1 var(--font);
   letter-spacing: -0.02em;
-  color: var(--purple);
+  color: #b98aff;
+  /* the yield range never breaks after its dash */
+  white-space: nowrap;
 }
 
 .stats span {
@@ -269,7 +278,7 @@
   top: 0;
   width: 1px;
   height: 91.25%;
-  background: linear-gradient(#0f0f1300, #0f0f1330 30%, #0f0f1330);
+  background: linear-gradient(#ffffff00, #ffffff33 30%, #ffffff33);
 }
 
 .scrubDefi,
@@ -290,13 +299,13 @@
 }
 
 .scrubTreasuries {
-  background: #2a2830;
-  box-shadow: 0 0 0 5px #0f0f1314;
+  background: #e4e2ea;
+  box-shadow: 0 0 0 5px #ffffff14;
 }
 
+/* its left comes from the script, kept inside the chart */
 .tip {
   position: absolute;
-  left: var(--x);
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
@@ -373,6 +382,12 @@
   .axis .axisToday {
     left: auto;
     right: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .stats b {
+    font-size: 34px;
   }
 }
 

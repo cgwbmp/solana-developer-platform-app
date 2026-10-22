@@ -32,10 +32,14 @@
   --form-stroke: #bdb9c7;
   /* the sections' rhythm: their padding (--pad), the gap under a head (--lead), the size of a
      head that shares its row with a picture (--title) and the subline ink (--sub) */
-  --pad: clamp(88px, 8.9vw, 128px);
+  --pad: clamp(104px, 10.5vw, 168px);
   --lead: clamp(56px, 6vw, 88px);
   --title: clamp(32px, 3.9vw, 56px);
   --sub: #0f0f1399;
+  /* the dark panels set into the paper page: their ground, their corners and the subline ink */
+  --pnl: #0a090d;
+  --pr: 32px;
+  --sub-n: #fbfaf999;
 
   /* native controls and scrollbars follow the ground, not the system theme */
   color-scheme: light;
@@ -95,6 +99,48 @@
 
 .night :where(h1, h2, h3) {
   color: var(--night-ink);
+}
+
+/*
+ * A dark panel: a rounded near-black block set into the paper page, full width, so the eye meets
+ * an object instead of the whole screen turning dark. For the bar it counts as paper
+ * (`data-ground="panel"`). Its content keeps a margin of its own from the rounded edge. A panel
+ * sets its light (--panel-light), its corners (--panel-radius) and the room after it
+ * (--panel-after) through variables, so its own class never races this one.
+ */
+.panel {
+  --form-stroke: #fbfaf959;
+  --sub: var(--sub-n);
+  /* its links draw in violet over a light hairline; a section inside it may change the accent */
+  --more-rule: #ffffff40;
+  --more-accent: var(--purple);
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+  margin-block: clamp(48px, 6vw, 96px) var(--panel-after, 0);
+  border-radius: var(--panel-radius, var(--pr));
+  color-scheme: dark;
+  /* each panel sets its own light (--panel-light): the brand's dark ground with violet leaking in */
+  background: var(--panel-light, none), var(--pnl);
+  color: var(--night-ink2);
+}
+
+/* markets and privacy in one panel: violet at the top right behind the chart, privacy's green
+   behind the switch near the bottom */
+.panelRun {
+  --panel-after: clamp(48px, 6vw, 96px);
+  --panel-light:
+    radial-gradient(60% 40% at 100% 0%, #9945ff24 0%, #9945ff00 70%),
+    radial-gradient(45% 30% at 22% 78%, #14f19512 0%, #14f19500 70%),
+    radial-gradient(60% 40% at 100% 100%, #9945ff14 0%, #9945ff00 65%);
+}
+
+.panel :where(h1, h2, h3) {
+  color: var(--night-ink);
+}
+
+.panel .wrap {
+  width: min(var(--band), calc(100% - 2 * clamp(20px, 4vw, 56px)));
 }
 
 .h2 {
@@ -166,7 +212,8 @@
  * The "more" link (more-link.tsx): a hairline under the words only, over which a magenta line
  * draws from the left on hover or focus, and an arrow that leaves through its own top right
  * corner while a twin comes in from the bottom left. A section moves its top margin with
- * --more-top, and the top margin it keeps on a touch screen with --more-touch-top.
+ * --more-top, and the top margin it keeps on a touch screen with --more-touch-top; a dark panel
+ * sets the hairline (--more-rule) and the line that draws over it (--more-accent).
  */
 .more {
   display: inline-flex;
@@ -181,8 +228,10 @@
 .moreText {
   padding-bottom: 5px;
   background:
-    linear-gradient(var(--magenta), var(--magenta)) 0 100% / 0 1px no-repeat,
-    linear-gradient(var(--line), var(--line)) 0 100% / 100% 1px no-repeat;
+    linear-gradient(var(--more-accent, var(--magenta)), var(--more-accent, var(--magenta))) 0 100% /
+    0 1px no-repeat,
+    linear-gradient(var(--more-rule, var(--line)), var(--more-rule, var(--line))) 0 100% / 100% 1px
+    no-repeat;
   transition: background-size 420ms var(--e);
 }
 
@@ -232,6 +281,18 @@
   }
 }
 
+/* wide screens: a wider column, so the page does not sit small in the middle */
+@media (min-width: 1800px) {
+  .root {
+    --band: min(1440px, calc(100vw - 160px));
+  }
+}
+
+/* on a dark panel the link is light */
+.panel .more {
+  color: var(--night-ink);
+}
+
 @media (max-width: 1000px) {
   .root {
     --band: calc(100vw - 40px);
@@ -242,9 +303,15 @@
   }
 }
 
+@media (max-width: 760px) {
+  .root {
+    --pr: 24px;
+  }
+}
+
 @media (max-width: 600px) {
   .root {
-    --pad: 64px;
+    --pad: 80px;
     --lead: 40px;
   }
 }

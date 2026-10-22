@@ -90,7 +90,7 @@ describe("PrivacySection", () => {
     const doc = new DOMParser().parseFromString(markup, "text/html");
 
     const section = doc.querySelector("section#privacy");
-    expect(section?.getAttribute("data-ground")).toBe("paper");
+    expect(section?.getAttribute("data-ground")).toBe("panel");
 
     const heading = doc.querySelector("h2");
     expect(heading?.querySelector(".sr-only")?.textContent).toBe("Confidential per operation.");

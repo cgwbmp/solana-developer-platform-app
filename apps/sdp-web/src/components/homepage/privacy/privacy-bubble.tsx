@@ -4,7 +4,12 @@ import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 import bubble from "@/components/homepage/bubble.module.css";
-import { bubbleClockStart, fitPill, runBubbleLoop } from "@/components/homepage/bubble-motion";
+import {
+  bubbleClockStart,
+  fitPill,
+  followPointer,
+  runBubbleLoop,
+} from "@/components/homepage/bubble-motion";
 import { useRiseArrived } from "@/components/homepage/rise";
 import styles from "./privacy-bubble.module.css";
 
@@ -17,8 +22,8 @@ const T_FOLD = HOLD;
 const T_ON = HOLD + 900;
 const T_OPEN = HOLD + 1450;
 const PERIOD = HOLD + 1500;
-/** Privacy's place in the page's bubble order: after the stack's three, the pillars' three and payments'. */
-const SLOT = 7;
+/** Privacy's place in the page's bubble order: after the stack's three and payments'. */
+const SLOT = 4;
 
 type PrivacyBubbleProps = {
   /** What the picture says, for assistive technology. */
@@ -59,11 +64,17 @@ export function PrivacyBubble({ label, words }: PrivacyBubbleProps) {
       if (!disposed) refit();
     });
     window.addEventListener("resize", refit);
+    /* under the pointer it keeps its word */
+    let hovering = false;
+    const stopLight = followPointer(root, pill, (over) => {
+      hovering = over;
+    });
 
     if (!arrived || reducedMotion) {
       return () => {
         disposed = true;
         window.removeEventListener("resize", refit);
+        stopLight();
       };
     }
 
@@ -79,6 +90,7 @@ export function PrivacyBubble({ label, words }: PrivacyBubbleProps) {
       let stage = 0;
 
       return (dt) => {
+        if (hovering && stage === 0) return;
         clock += dt;
         if (clock < 0) return;
         if (stage === 0 && clock >= T_FOLD) {
@@ -111,6 +123,7 @@ export function PrivacyBubble({ label, words }: PrivacyBubbleProps) {
     return () => {
       disposed = true;
       stop();
+      stopLight();
       window.removeEventListener("resize", refit);
       // back to the first word, unfolded, for a fresh start
       for (const name of ["data-tg", "data-on", "data-off", "data-beat"]) {
@@ -123,7 +136,7 @@ export function PrivacyBubble({ label, words }: PrivacyBubbleProps) {
   return (
     <div
       ref={rootRef}
-      className={cn(bubble.bubble, bubble.mint, styles.bubble)}
+      className={cn(bubble.bubble, bubble.mint, bubble.live, styles.bubble)}
       data-paused=""
       role="img"
       aria-label={label}

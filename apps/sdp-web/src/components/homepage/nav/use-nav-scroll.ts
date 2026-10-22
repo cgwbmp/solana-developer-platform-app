@@ -9,7 +9,8 @@ const GROUND_LINE = 0.62;
 
 /**
  * The ground of the section under `line` (px from the viewport's top). Sections mark themselves
- * with `data-ground="paper" | "night"`; a section without the mark counts as paper.
+ * with `data-ground="paper" | "night" | "panel"`; a panel (a dark block set into the paper page)
+ * and a section without the mark count as paper.
  */
 export function pickGround(navRoot: Element | null, line: number): NavGround {
   for (const el of document.querySelectorAll<HTMLElement>("[data-ground]")) {
@@ -66,10 +67,10 @@ const { platform, builders, docs } = NAV_GROUP_IDS;
 const SECTION_GROUP: Record<string, NavGroupId | null> = {
   top: null,
   stack: platform,
-  pillars: platform,
   network: platform,
   issuance: platform,
   payments: platform,
+  "payments-api": platform,
   markets: platform,
   privacy: platform,
   interfaces: docs,

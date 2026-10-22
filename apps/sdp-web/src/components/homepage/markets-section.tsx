@@ -17,7 +17,7 @@ export async function MarketsSection() {
   const t = await getTranslations();
 
   return (
-    <section id="markets" data-ground="paper" className={cn(shared.paper, styles.section)}>
+    <section id="markets" data-ground="panel" className={styles.section}>
       <div className={cn(shared.wrap, styles.layout)}>
         <Rise index={1} className={styles.head}>
           <FormHeadline

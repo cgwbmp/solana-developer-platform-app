@@ -1,6 +1,6 @@
 /* the bubble: the kind on the bench's stage, as one word with its mark, in the page's violet
-   bubble (bubble.module.css); sized in container units of
-   the bubble */
+   bubble (bubble.module.css); sized in container units of the bubble. It has no paper of its own:
+   pulled up into its row it would cut off the shadow of the interfaces' panel above */
 .bubble {
   --ph: 19cqw;
   /* the room either side of the word in the pill, its mark included */
@@ -19,8 +19,6 @@
   gap: clamp(24px, 3vw, 40px);
   padding: clamp(28px, 4vw, 56px);
   border-radius: 28px;
-  background:
-    radial-gradient(62% 52% at 50% 50%, #9945ff14 0%, #9945ff06 48%, #fbfaf900 78%), #fbfaf9;
   font: 400 var(--display) / 1 var(--font);
   letter-spacing: -0.03em;
   color: var(--ink);

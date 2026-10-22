@@ -30,7 +30,7 @@ export async function HomepageNav({ links }: { links: HomepageLinks }) {
         {
           label: t("Homepage.nav.platform.payments.title"),
           body: t("Homepage.nav.platform.payments.body"),
-          href: "#payments",
+          href: "#payments-api",
         },
         {
           label: t("Homepage.nav.platform.markets.title"),
@@ -111,7 +111,7 @@ export async function HomepageNav({ links }: { links: HomepageLinks }) {
 
   const mobileLinks: NavLink[] = [
     { label: t("Homepage.nav.platform.issuance.title"), href: "#issuance" },
-    { label: t("Homepage.nav.platform.payments.title"), href: "#payments" },
+    { label: t("Homepage.nav.platform.payments.title"), href: "#payments-api" },
     { label: t("Homepage.nav.platform.markets.title"), href: "#markets" },
     { label: t("Homepage.nav.platform.privacy"), href: "#privacy" },
     { label: t("Homepage.nav.platform.partners"), href: "#stack" },

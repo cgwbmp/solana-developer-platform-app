@@ -219,6 +219,18 @@
   }
 }
 
+/* wide screens: the rules still run the window's width, the marks keep to the page column, each
+   block to its half of it (a grid item's percentage padding is of its own cell) */
+@media (min-width: 1700px) {
+  .logocell:first-child {
+    padding-left: calc(100% - var(--band) / 2 + clamp(24px, 3vw, 48px));
+  }
+
+  .logocell:last-child {
+    padding-right: calc(100% - var(--band) / 2 + clamp(24px, 3vw, 48px));
+  }
+}
+
 @media (max-width: 1180px) {
   .logobar {
     grid-template-columns: 1fr;

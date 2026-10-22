@@ -57,10 +57,10 @@ describe("MarketsSection", () => {
     return new DOMParser().parseFromString(markup, "text/html");
   }
 
-  it("renders the paper section with its h2, paragraph and sandbox link", async () => {
+  it("renders the dark panel section with its h2, paragraph and sandbox link", async () => {
     const doc = await parse();
     const section = doc.querySelector("section#markets");
-    expect(section?.getAttribute("data-ground")).toBe("paper");
+    expect(section?.getAttribute("data-ground")).toBe("panel");
 
     const heading = doc.querySelector("h2");
     expect(heading?.querySelector(".sr-only")?.textContent).toBe("Earn on it. Settle against it.");

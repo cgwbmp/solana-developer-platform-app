@@ -1,306 +1,149 @@
 /*
- * Meet the builders. The room is 220vh of
- * scroll; the stage stays pinned under the bar (--nav-height) and the scene draws in it. Without
- * the ring (no WebGL, reduced motion) the room is as tall as its content and the captions sit in
- * the flow around a grid of the films.
+ * Meet the builders, still. A dark panel (homepage.module.css `.panel`) on the night ground,
+ * rounded at the top only: the walkthroughs and the close run on from it as one dark block, its
+ * violet only at the top right. The faces in grey, in colour under the pointer, beside the words.
  */
 .section {
-  position: relative;
-  margin-bottom: 0;
+  --panel-light: radial-gradient(40% 50% at 100% 0%, #9945ff14 0%, #9945ff00 70%);
+  --pnl: var(--night);
+  --panel-radius: var(--pr) var(--pr) 0 0;
+  padding: calc(var(--pad) * 1.1) 0 0;
 }
 
-.room {
-  position: relative;
-  box-sizing: border-box;
-  height: 220vh;
-  /* the section padding bounds the pinned stage, so the ring arrives 104px down
-     and leaves 104px early; the shot's progress still runs over the whole 220vh */
-  padding: 104px 0;
-  color: #fff;
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: clamp(40px, 6vw, 104px);
+  align-items: center;
 }
 
-.stage {
-  position: sticky;
-  top: var(--nav-height);
-  height: calc(100svh - var(--nav-height));
+.faces {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(8px, 0.9vw, 14px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.face {
+  --face-radius: 14px;
+  position: relative;
+  isolation: isolate;
+  display: block;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
+  border-radius: var(--face-radius);
+  background: #141219;
+  text-decoration: none;
 }
 
-.canvas {
-  position: absolute;
-  inset: 0;
+.face img {
   width: 100%;
   height: 100%;
-  display: block;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.04);
+  opacity: 0.82;
+  transition:
+    filter 420ms var(--e),
+    opacity 420ms var(--e);
 }
 
-.caption {
+/* the name stands on a shade rising from the foot */
+.face::after {
+  content: "";
   position: absolute;
-  left: 50%;
-  z-index: 4;
-  width: min(900px, 90vw);
-  transform: translateX(-50%);
-  text-align: center;
+  inset: 0;
+  background: linear-gradient(to top, #08080ad9 0%, #08080a00 52%);
   pointer-events: none;
-  opacity: 0;
 }
 
-.caption[data-in="true"] {
+.face span {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  z-index: 1;
+  font: 500 clamp(12px, 0.95vw, 14px) / 1.2 var(--font);
+  letter-spacing: -0.005em;
+  color: var(--night-ink);
+}
+
+.face:hover img,
+.face:focus-visible img {
+  filter: none;
   opacity: 1;
 }
 
-.top {
-  top: max(12vh, 76px);
-}
-
-.bottom {
-  bottom: 7vh;
+.faces .face:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 3px;
+  border-radius: var(--face-radius);
 }
 
 .title {
-  margin: 0;
-  font: 400 var(--display) / 0.98 var(--font);
+  font-size: var(--display);
+  line-height: 1.02;
   letter-spacing: -0.03em;
-  color: #fff;
 }
 
-.room .title {
-  color: #fff;
-}
-
-/* scoped to the caption to outrank the page's `p { margin: 0 }` */
-.caption .body {
-  max-width: 44ch;
-  margin: 16px auto 0;
-  font-size: clamp(16px, 1.5vw, 22px);
-  line-height: 1.4;
-  color: #ffffff99;
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 0.5s 0.25s,
-    transform 0.5s 0.25s;
-}
-
-.top .body {
-  text-shadow: 0 1px 14px #08080acc;
+/* scoped to the text to outrank the page's `p { margin: 0 }` */
+.text .body {
+  max-width: 34ch;
+  margin-top: 24px;
+  font: 500 clamp(16px, 1.3vw, 19px) / 1.45 var(--font);
+  letter-spacing: -0.01em;
+  color: var(--sub-n);
 }
 
 .cta {
-  display: flex;
-  justify-content: center;
-  margin-top: 26px;
-  pointer-events: auto;
-  opacity: 0;
-  transition: opacity 0.5s 0.4s;
+  margin-top: 36px;
 }
 
-.caption[data-in="true"] .body,
-.caption[data-in="true"] .cta {
-  opacity: 1;
-  transform: none;
+.series {
+  min-height: 44px;
 }
 
-/* a caption that is not there is not there for a tap or a key */
-.caption:not([data-in="true"]) .cta {
-  pointer-events: none;
-  visibility: hidden;
-}
-
-.room .series {
+.section .series {
   border-color: #ffffff33;
-  color: #fff;
+  color: var(--night-ink);
 }
 
-.room .series:hover {
-  background: #ffffff14;
+.section .series:hover {
+  background: #ffffff0f;
 }
 
 .ytm {
   display: inline-block;
   flex: 0 0 auto;
-  width: 22px;
-  height: auto;
-  margin-right: 10px;
-  vertical-align: -3px;
+  width: 20px;
+  height: 14px;
+  margin-right: 3px;
 }
 
-/* beside the ring: the films as links, out of sight until a key reaches one, then over the stage */
-.keyList {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  list-style: none;
-}
-
-.keyList:focus-within {
-  left: 50%;
-  bottom: 24px;
-  z-index: 6;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px 18px;
-  width: min(900px, calc(100vw - 32px));
-  height: auto;
-  margin: 0;
-  padding: 14px 18px;
-  overflow: visible;
-  clip-path: none;
-  transform: translateX(-50%);
-  border: 1px solid var(--night-line);
-  border-radius: 12px;
-  background: var(--night2);
-  white-space: normal;
-}
-
-.keyList .film {
-  font-size: 14px;
-  color: var(--night-ink);
-}
-
-/* without the ring: the stills in a grid between the two captions. Under reduced motion the ring
-   never runs, so the room takes this shape while it waits too, rather than shrink from 220vh once
-   the script decides */
-.room[data-mode="still"] {
-  height: auto;
-}
-
-.room[data-mode="still"] .stage {
-  position: relative;
-  top: auto;
-  height: auto;
-  padding: 120px 0;
-}
-
-.room[data-mode="still"] .caption {
-  position: relative;
-  left: auto;
-  top: auto;
-  bottom: auto;
-  margin: 0 auto 64px;
-  transform: none;
-  opacity: 1;
-}
-
-.room[data-mode="still"] .bottom {
-  margin: 64px auto 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .room[data-mode="waiting"] {
-    height: auto;
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .room[data-mode="waiting"] .stage {
-    position: relative;
-    top: auto;
-    height: auto;
-    padding: 120px 0;
+  .text {
+    order: -1;
   }
 
-  .room[data-mode="waiting"] .caption {
-    position: relative;
-    left: auto;
-    top: auto;
-    bottom: auto;
-    margin: 0 auto 64px;
-    transform: none;
-    opacity: 1;
+  .face {
+    --face-radius: 10px;
   }
 
-  .room[data-mode="waiting"] .bottom {
-    margin: 64px auto 0;
-  }
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 28px 20px;
-  width: var(--band);
-  margin: 0 auto;
-  padding: 0;
-  list-style: none;
-}
-
-.grid .film {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  font-size: 15px;
-  color: var(--night-ink2);
-  text-decoration: none;
-}
-
-.grid .film:hover {
-  color: var(--night-ink);
-}
-
-.still {
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 10px;
-  filter: brightness(0.85);
-  transition: filter 160ms var(--micro);
-}
-
-.grid .film:hover .still {
-  filter: none;
-}
-
-@media (max-width: 1000px) {
-  .room {
-    padding: 72px 0;
-  }
-}
-
-@media (max-width: 700px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px 12px;
-  }
-
-  .room[data-mode="still"] .stage {
-    padding: 72px 0;
-  }
-}
-
-@media (max-width: 700px) and (prefers-reduced-motion: reduce) {
-  .room[data-mode="waiting"] .stage {
-    padding: 72px 0;
-  }
-}
-
-@media (max-height: 500px) and (orientation: landscape) {
-  .title {
-    font-size: 28px;
-  }
-
-  .caption .body {
-    margin-top: 8px;
-    font-size: 14px;
-  }
-
-  .bottom {
-    bottom: 16px;
-  }
-
-  .cta {
-    margin-top: 12px;
+  .face span {
+    left: 8px;
+    right: 8px;
+    bottom: 7px;
+    font-size: 11px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .caption .body,
-  .cta {
+  .face img {
     transition: none;
   }
 }

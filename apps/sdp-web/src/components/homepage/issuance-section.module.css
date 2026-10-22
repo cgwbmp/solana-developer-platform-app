@@ -50,10 +50,6 @@
   color: var(--ink3);
 }
 
-.sheet > .row:last-child {
-  border-bottom: 1px solid var(--line);
-}
-
 .sheet > .top {
   padding-top: 12px;
   font-size: 20px;

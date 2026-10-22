@@ -4,7 +4,7 @@ import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef } from "react";
 import bubble from "@/components/homepage/bubble.module.css";
-import { fitPill } from "@/components/homepage/bubble-motion";
+import { fitPill, followPointer } from "@/components/homepage/bubble-motion";
 import { restartAttribute } from "@/components/homepage/restart-animation";
 import { useTranslations } from "@/i18n/provider";
 import { watchActive } from "@/lib/use-scene-active";
@@ -29,8 +29,8 @@ function KindMark({ kind }: { kind: PaymentKind }) {
 }
 
 /**
- * The bubble above the bench: the kind on the stage, its word and mark in a violet pill. The
- * bench moves it along; each hand-over is a beat.
+ * The payments API's bubble: the kind on the bench's stage, its word and mark in a violet pill. The
+ * bench under issuance moves it along (PaymentKindProvider); each hand-over is a beat.
  */
 export function PaymentBubble() {
   const t = useTranslations();
@@ -67,6 +67,14 @@ export function PaymentBubble() {
     if (shows > 0) restartAttribute(cubeRef.current, "data-beat");
   }, [shows]);
 
+  /* the light in the pill follows the pointer */
+  useEffect(() => {
+    const cube = cubeRef.current;
+    const pill = pillRef.current;
+    if (!cube || !pill) return;
+    return followPointer(cube, pill);
+  }, []);
+
   /* the ambient loops stop off screen and in a hidden tab */
   useEffect(() => {
     const cube = cubeRef.current;
@@ -80,7 +88,7 @@ export function PaymentBubble() {
   return (
     <div
       ref={cubeRef}
-      className={cn(bubble.bubble, bubble.violet, styles.bubble)}
+      className={cn(bubble.bubble, bubble.violet, bubble.live, styles.bubble)}
       role="img"
       aria-label={t("Homepage.payments.bubbleLabel")}
     >

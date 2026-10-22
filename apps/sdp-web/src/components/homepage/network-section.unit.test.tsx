@@ -27,9 +27,9 @@ async function render() {
 }
 
 describe("NetworkSection", () => {
-  it("keeps its anchor and paper ground", async () => {
+  it("keeps its anchor and is a dark panel the bar reads as paper", async () => {
     const markup = await render();
-    expect(markup).toMatch(/^<section id="network" data-ground="paper"/);
+    expect(markup).toMatch(/^<section id="network" data-ground="panel"/);
   });
 
   it("names the section with one h2 read as the whole sentence", async () => {

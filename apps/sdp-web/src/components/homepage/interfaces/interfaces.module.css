@@ -6,7 +6,8 @@
 .section {
   --code-pad: clamp(22px, 2.2vw, 30px);
 
-  padding: var(--pad) 0 calc(var(--pad) * 1.2);
+  /* after the markets and privacy panel, and before the payments API, its neighbour */
+  padding: calc(var(--pad) * 0.55) 0 calc(var(--pad) * 0.5);
 }
 
 /* ── the head ─────────────────────────────────────────────────────────── */

@@ -2,7 +2,8 @@
  * The speed race, drawn.
  * Four rails across the box; one payment leaves on each at the same moment. On Solana it crosses in
  * ~0.4s and settles with a green pulse; the card, ACH and SWIFT signals crawl, taking as many
- * seconds as the real thing takes days. Pure drawing: the component owns the loop.
+ * seconds as the real thing takes days. Drawn in the night palette of the network's dark panel.
+ * Pure drawing: the component owns the loop.
  */
 
 export const LANE_SECONDS = [0.42, 16, 22, 30] as const;
@@ -13,10 +14,11 @@ export const LAUNCH_EVERY = 2.4;
 /** Room the settle pulse needs at the rails' end when the settlements list is hidden. */
 const NARROW_RIGHT_INSET = 24;
 
-const RAIL = "rgba(15,15,19,.12)";
-const SETTLE = "#05BF86";
-const SLOW_STILL = "#B9B5C3";
-const RIPPLE_SECONDS = 1.4;
+const RAIL = "rgba(255,255,255,.12)";
+const FAST = "#DC1FFF";
+const SLOW = "#6E6A78";
+const SETTLE = "#14F195";
+const RIPPLE_SECONDS = 0.9;
 
 export type Signal = { t: number };
 export type Ripple = { y: number; t: number };
@@ -87,9 +89,10 @@ export function stepAndDraw(
       const x = left + (right - left) * (fast ? easeInOutQuad(u) : u);
 
       const trail = fast ? 140 : 46;
+      const color = fast ? FAST : SLOW;
       const gradient = ctx.createLinearGradient(x - trail, y, x, y);
-      gradient.addColorStop(0, fast ? "rgba(0,0,0,0)" : "rgba(15,15,19,0)");
-      gradient.addColorStop(1, fast ? "#DC1FFF" : "rgba(15,15,19,.55)");
+      gradient.addColorStop(0, "rgba(0,0,0,0)");
+      gradient.addColorStop(1, color);
       ctx.strokeStyle = gradient;
       ctx.lineWidth = fast ? 2 : 1.5;
       ctx.beginPath();
@@ -97,24 +100,14 @@ export function stepAndDraw(
       ctx.lineTo(x, y);
       ctx.stroke();
 
-      if (fast) {
-        ctx.fillStyle = "rgba(153,69,255,.16)";
-        ctx.beginPath();
-        ctx.arc(x, y, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowColor = "#9945FF";
-        ctx.shadowBlur = 12;
-        ctx.fillStyle = "#9945FF";
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      } else {
-        ctx.fillStyle = "#1C1B1C";
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      /* the head: white with a magenta glow on Solana, the rail's grey on the others */
+      ctx.shadowColor = color;
+      ctx.shadowBlur = fast ? 18 : 8;
+      ctx.fillStyle = fast ? "#FFFFFF" : color;
+      ctx.beginPath();
+      ctx.arc(x, y, fast ? 3 : 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
 
       if (u >= 1) {
         signals.splice(k, 1);
@@ -126,35 +119,23 @@ export function stepAndDraw(
     }
   });
 
-  /* the soft green pulse where Solana settled: two waves, the second a beat behind */
+  /* a green ring where Solana settled, opening out as it fades */
   for (let j = state.ripples.length - 1; j >= 0; j--) {
     const ripple = state.ripples[j];
     ripple.t += dt;
     const k = Math.min(1, ripple.t / RIPPLE_SECONDS);
-    for (const delay of [0, 0.22]) {
-      const q = Math.max(0, Math.min(1, (k - delay) / (1 - delay)));
-      if (q <= 0) continue;
-      const radius = 5 + 30 * (1 - (1 - q) ** 3);
-      const glow = ctx.createRadialGradient(right, ripple.y, 0, right, ripple.y, radius);
-      glow.addColorStop(0, `rgba(20,241,149,${(0.34 * (1 - q)).toFixed(3)})`);
-      glow.addColorStop(1, "rgba(20,241,149,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(right, ripple.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.strokeStyle = `rgba(20,241,149,${(0.9 * (1 - k) * (1 - k)).toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(right, ripple.y, 3 + 26 * (1 - (1 - k) ** 3), 0, Math.PI * 2);
+    ctx.stroke();
     if (k >= 1) state.ripples.splice(j, 1);
   }
 
   /* the end of the Solana line: where it settles */
-  const end = height * laneFraction(0);
-  ctx.fillStyle = "rgba(20,241,149,.2)";
-  ctx.beginPath();
-  ctx.arc(right, end, 9, 0, Math.PI * 2);
-  ctx.fill();
   ctx.fillStyle = SETTLE;
   ctx.beginPath();
-  ctx.arc(right, end, 3.5, 0, Math.PI * 2);
+  ctx.arc(right, height * laneFraction(0), 2.5, 0, Math.PI * 2);
   ctx.fill();
 
   return settled;
@@ -173,7 +154,7 @@ export function drawStill(ctx: CanvasRenderingContext2D, geometry: Geometry): vo
     ctx.moveTo(0, y);
     ctx.lineTo(right, y);
     ctx.stroke();
-    ctx.fillStyle = fast ? SETTLE : SLOW_STILL;
+    ctx.fillStyle = fast ? SETTLE : SLOW;
     ctx.beginPath();
     ctx.arc(fast ? right : right * 0.06, y, 3, 0, Math.PI * 2);
     ctx.fill();

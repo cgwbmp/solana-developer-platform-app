@@ -4,7 +4,6 @@ import { cn } from "@sdp/ui/cn";
 import { type RefObject, useEffect, useRef } from "react";
 import shared from "@/components/homepage/homepage.module.css";
 import { externalLinkProps, type SignupLink } from "@/components/homepage/homepage-links";
-import { LanguagePicker } from "@/components/language-picker";
 import styles from "./nav.module.css";
 import { isOwnMenuKey } from "./nav-panels";
 import type { NavLink } from "./nav-types";
@@ -99,9 +98,6 @@ export function MobileMenu({
           {link.label}
         </a>
       ))}
-      <div className={styles.mobileLang}>
-        <LanguagePicker variant="landing" />
-      </div>
       <div className={styles.mobileCta}>
         {signedIn ? null : (
           <a

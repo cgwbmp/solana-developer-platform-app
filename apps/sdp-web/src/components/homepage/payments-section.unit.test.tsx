@@ -23,42 +23,27 @@ vi.mock("@/i18n/provider", async () => {
   };
 });
 
+import { PaymentKindProvider } from "./payments/payment-kind-context";
 import { PaymentsSection } from "./payments-section";
 
 async function renderPayments() {
   const container = document.createElement("div");
-  container.innerHTML = renderToStaticMarkup(await PaymentsSection());
+  container.innerHTML = renderToStaticMarkup(
+    <PaymentKindProvider>
+      <PaymentsSection />
+    </PaymentKindProvider>
+  );
   return container;
 }
 
 describe("PaymentsSection", () => {
-  it("is the paper-ground #payments section with one h2", async () => {
+  it("is the paper-ground #payments section, the bench alone", async () => {
     const view = await renderPayments();
     const section = view.querySelector("section");
     expect(section?.id).toBe("payments");
     expect(section?.dataset.ground).toBe("paper");
-    const headings = view.querySelectorAll("h1, h2, h3");
-    expect(headings).toHaveLength(1);
-    expect(headings[0].tagName).toBe("H2");
-    expect(headings[0].textContent).toContain("Stablecoins and fiat,");
-    expect(headings[0].textContent).toContain("one payments API.");
-  });
-
-  it("opens the payment form in the sandbox, in the same tab", async () => {
-    const view = await renderPayments();
-    const link = [...view.querySelectorAll("a")].find((a) =>
-      a.textContent?.includes("Send a payment in the sandbox")
-    );
-    expect(link?.getAttribute("href")).toBe("/dashboard/payments/pay");
-    expect(link?.hasAttribute("target")).toBe(false);
-  });
-
-  it("describes the bubble as one image", async () => {
-    const view = await renderPayments();
-    const bubble = view.querySelector('[role="img"]');
-    expect(bubble?.getAttribute("aria-label")).toBe(
-      "Payments of every kind, each one sent and settled"
-    );
+    expect(view.querySelectorAll("h1, h2, h3")).toHaveLength(0);
+    expect(view.querySelector('[role="img"]')).toBeNull();
   });
 
   it("names the six kinds as tabs that control one stage", async () => {

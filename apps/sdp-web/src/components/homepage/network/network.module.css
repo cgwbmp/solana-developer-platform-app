@@ -1,11 +1,14 @@
 /*
  * "Settled everywhere, under a second.".
  * On the page's three columns: the paragraph takes the third and sits on the headline's first
- * line; the rails end with the second column and the list of settlements takes the third.
+ * line; the rails end with the second column and the list of settlements takes the third. It is a
+ * dark panel (homepage.module.css `.panel`), its violet leaking in from the top right.
  */
 .section {
-  padding: clamp(88px, 8.9vw, 128px) 0;
-  color: var(--ink3);
+  --panel-light:
+    radial-gradient(70% 90% at 100% 0%, #9945ff24 0%, #9945ff00 62%),
+    radial-gradient(50% 60% at 0% 100%, #9945ff14 0%, #9945ff00 70%);
+  padding: var(--pad) 0;
 }
 
 .head {
@@ -15,25 +18,21 @@
   margin-bottom: clamp(56px, 6vw, 88px);
 }
 
-.headline {
-  color: var(--ink);
-}
-
 .intro {
   margin: 0 0 6px;
   max-width: 46ch;
   font: 500 clamp(16px, 1.3vw, 19px) / 1.45 var(--font);
   letter-spacing: -0.01em;
-  color: #0f0f1399;
+  color: var(--sub-n);
 }
 
-/* the chosen phrase: a white bubble with a soft violet glow inside */
+/* the chosen phrase: a glass bubble with a soft violet glow inside */
 .selN {
   position: relative;
   display: inline-block;
   padding: 0 0.12em;
   border-radius: 0.2em;
-  color: #9a47ff;
+  color: #c9a6ff;
   isolation: isolate;
   transition: color 520ms var(--e);
 }
@@ -44,9 +43,9 @@
   inset: -0.06em -0.02em -0.1em;
   z-index: -1;
   border-radius: 0.2em;
-  background: #fff;
+  background: #ffffff0d;
   box-shadow:
-    inset 0 0 13px #8d54d266,
+    inset 0 0 13px #8d54d299,
     inset 0 0 34px #8d54d266,
     inset 0 0 46px #8d54d233;
 }
@@ -108,21 +107,20 @@
 
 .lane span {
   letter-spacing: -0.005em;
-  color: #0f0f1399;
+  color: var(--night-ink2);
 }
 
 .lane b {
   font-weight: 500;
-  color: var(--ink);
+  color: var(--night-ink3);
 }
 
 .laneFast span {
-  color: var(--ink);
+  color: var(--night-ink);
 }
 
-/* a contrast fix for the green on paper */
 .laneFast b {
-  color: #047857;
+  color: var(--green);
 }
 
 /* the list of settlements: its rule is the Solana rail, continued; each row is one rail tall */
@@ -141,11 +139,11 @@
   bottom: 100%;
   left: 0;
   padding-bottom: 10px;
-  border-bottom: 1px solid #0f0f131f;
+  border-bottom: 1px solid #ffffff1f;
   font: 500 10.5px / 1 var(--font);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #0f0f1380;
+  color: var(--night-ink3);
 }
 
 .feedRows {
@@ -159,13 +157,13 @@
   grid-template-columns: auto 1fr;
   align-content: center;
   gap: 4px 12px;
-  border-bottom: 1px solid #0f0f1314;
+  border-bottom: 1px solid var(--night-line);
   font-size: 13.5px;
-  color: var(--ink3);
+  color: var(--night-ink2);
 }
 
 .feedRow span:first-child {
-  color: var(--ink);
+  color: var(--night-ink);
 }
 
 .feedRow span:nth-child(2) {
@@ -175,7 +173,7 @@
 .feedRow span:last-child {
   grid-column: 1 / -1;
   font-size: 12px;
-  color: #0f0f1366;
+  color: var(--night-ink3);
 }
 
 /* the figures */
@@ -197,7 +195,7 @@
   display: block;
   font: 400 clamp(44px, 5.2vw, 92px) / 1 var(--font);
   letter-spacing: -0.02em;
-  color: #9945ff;
+  color: var(--night-ink);
 }
 
 .stat > span {
@@ -205,7 +203,7 @@
   margin-top: 22px;
   max-width: 18ch;
   font: 500 clamp(15px, 1.2vw, 18px) / 1.2 var(--font);
-  color: #0f0f1399;
+  color: var(--sub-n);
 }
 
 @media (min-width: 901px) {
@@ -237,10 +235,6 @@
 }
 
 @media (max-width: 600px) {
-  .section {
-    padding: 64px 0;
-  }
-
   .head {
     margin-bottom: 40px;
   }

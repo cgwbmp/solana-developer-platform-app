@@ -1,7 +1,7 @@
 /*
  * The privacy bubble: the page's mint bubble
- * (bubble.module.css) on a card, everything sized to the card's content width (cqw), so
- * container-type and the card's padding stay on the same element. The script sets the pill's width
+ * (bubble.module.css) on the dark panel, everything sized to the box's content width (cqw), so
+ * container-type and the box's padding stay on the same element. The script sets the pill's width
  * and toggles data-tg (folded into a switch) and data-off / data-on (the switch).
  */
 .bubble {
@@ -23,17 +23,20 @@
   padding: clamp(28px, 4vw, 56px);
   overflow: hidden;
   border-radius: 28px;
-  background:
-    radial-gradient(62% 52% at 50% 50%, #14f19517 0%, #14f19508 48%, #fbfaf900 78%), #fbfaf9;
 }
 
-/* the outer ring; off, it loses its green */
+/* the rings glow green on the dark (set on the outer ring, so the inner one inherits them); off,
+   the outer one loses its green */
 .outer {
+  --ring-bg: radial-gradient(140% 170% at 18% 100%, #14f1952e 0%, #14f19510 48%, #14f19505 100%);
+  --ring-edge: #14f1951f;
+  --inner-bg: radial-gradient(140% 170% at 20% 100%, #14f1954d 0%, #14f1951f 52%, #14f1950a 100%);
+  --inner-edge: #14f19529;
   transition: filter 520ms var(--e);
 }
 
 .bubble[data-off] > .outer {
-  filter: saturate(0.1) brightness(1.03);
+  filter: saturate(0.15) brightness(0.85);
 }
 
 /* the pill's width comes from the script (the word plus room either side, or the switch); before

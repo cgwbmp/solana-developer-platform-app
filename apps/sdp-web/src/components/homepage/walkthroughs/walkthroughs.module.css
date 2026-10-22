@@ -1,6 +1,8 @@
 /* The sandbox walkthroughs: the video, and the chapters as hairline rows. */
 .section {
-  padding: calc(var(--pad) * 1.1) 0 calc(var(--pad) * 1.2);
+  /* it runs on from the builders' panel as one dark block: closer than a new section would, its
+     heading keeping more air above than below */
+  padding: calc(var(--pad) * 1.05) 0 calc(var(--pad) * 1.2);
 }
 
 .playerBlock {
@@ -22,6 +24,15 @@
   border: 1px solid #ffffff14;
   border-radius: 14px;
   background: #08080a;
+}
+
+/* a phone on its side: the film fits under the bar whole */
+@media (max-height: 500px) and (orientation: landscape) {
+  .frame {
+    max-height: calc(100svh - 80px);
+    width: auto;
+    margin-inline: auto;
+  }
 }
 
 .video {

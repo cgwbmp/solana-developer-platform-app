@@ -101,29 +101,6 @@
       "received": "Received {amount} USDC",
       "partnersLabel": "Partners on the platform"
     },
-    "pillars": {
-      "headlineLine1": "Issue it. Move it.",
-      "headlineLine2": "Earn on it.",
-      "intro": "Three surfaces behind one API and one dashboard. Each is a product on its own; together they are the stack a finance team needs onchain.",
-      "issuance": {
-        "title": "Issuance",
-        "body": "Launch a stablecoin, a tokenized deposit or a real-world asset on Token-2022, with permissioning and privacy set before mint.",
-        "link": "Issue the asset",
-        "imageLabel": "An asset being minted"
-      },
-      "payments": {
-        "title": "Payments",
-        "body": "Stablecoins and two hundred fiat currencies through one API: pay, request, recurring, batch and micro, on and off ramp.",
-        "link": "Move the money",
-        "imageLabel": "A payment moving"
-      },
-      "markets": {
-        "title": "Markets",
-        "body": "Yield on idle balances from tokenized treasuries to curated DeFi, and atomic delivery-versus-payment against cash.",
-        "link": "Earn on it",
-        "imageLabel": "Two legs of a trade settling together"
-      }
-    },
     "network": {
       "headlineLine1": "Settled everywhere,",
       "headlineHighlight": "under a second",
@@ -304,9 +281,6 @@
       "intro": {
         "title": "Meet the builders",
         "body": "Sixteen conversations with the teams on the platform, from the Solana channel. Choose a film to watch it."
-      },
-      "outro": {
-        "title": "In their own words"
       },
       "films": "The films",
       "film": "{name}: watch the conversation on YouTube (opens in a new tab)",

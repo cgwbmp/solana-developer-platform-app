@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { cn } from "@sdp/ui/cn";
 import { BuildersSection } from "@/components/homepage/builders-section";
 import { HeroSection } from "@/components/homepage/hero-section";
 import styles from "@/components/homepage/homepage.module.css";
@@ -10,8 +11,9 @@ import { IssuanceSection } from "@/components/homepage/issuance-section";
 import { homepageRootStyle } from "@/components/homepage/layout";
 import { MarketsSection } from "@/components/homepage/markets-section";
 import { NetworkSection } from "@/components/homepage/network-section";
+import { PaymentKindProvider } from "@/components/homepage/payments/payment-kind-context";
+import { PaymentsApiSection } from "@/components/homepage/payments-api-section";
 import { PaymentsSection } from "@/components/homepage/payments-section";
-import { PillarsSection } from "@/components/homepage/pillars-section";
 import { PrivacySection } from "@/components/homepage/privacy-section";
 import { StackSection } from "@/components/homepage/stack-section";
 import { StartSection } from "@/components/homepage/start-section";
@@ -20,16 +22,14 @@ import { homepageOpenSignup } from "@/flags";
 import { getTranslations } from "@/i18n/server";
 
 /*
- * Without script the page must still read: the blocks that rise in (`data-rise`), the letters that
- * form in (`data-form-letter`) and the captions shown by a scene (`data-noscript-reveal`) wait on
- * client effects, so a noscript style sets them in their final state. Stable data attributes,
- * since the CSS modules' class names are hashed. With script it never applies.
+ * Without script the page must still read: the blocks that rise in (`data-rise`) and the letters
+ * that form in (`data-form-letter`) wait on client effects, so a noscript style sets them in their
+ * final state. Stable data attributes, since the CSS modules' class names are hashed. With script
+ * it never applies.
  */
 const NOSCRIPT_CSS = [
   "[data-rise]{opacity:1!important;transform:none!important;clip-path:none!important}",
   "[data-form-letter]{color:inherit!important;-webkit-text-stroke:0!important;filter:none!important;opacity:1!important;transform:none!important}",
-  "[data-noscript-reveal],[data-noscript-reveal] *{opacity:1!important;visibility:visible!important}",
-  "[data-noscript-reveal] a{pointer-events:auto!important}",
 ].join("");
 
 export default async function Home() {
@@ -55,13 +55,19 @@ export default async function Home() {
       <main id="main">
         <HeroSection links={links} />
         <StackSection />
-        <PillarsSection />
         <NetworkSection />
         <IssuanceSection />
-        <PaymentsSection />
-        <MarketsSection />
-        <PrivacySection />
-        <InterfacesSection links={links} />
+        {/* the bench under issuance moves the bubble of the payments API further down */}
+        <PaymentKindProvider>
+          <PaymentsSection />
+          {/* markets and privacy share one dark panel */}
+          <div className={cn(styles.panel, styles.panelRun)}>
+            <MarketsSection />
+            <PrivacySection />
+          </div>
+          <InterfacesSection links={links} />
+          <PaymentsApiSection />
+        </PaymentKindProvider>
         <BuildersSection />
         <WalkthroughsSection />
         <StartSection links={links} />

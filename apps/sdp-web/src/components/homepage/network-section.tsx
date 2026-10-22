@@ -20,7 +20,7 @@ export async function NetworkSection() {
   const t = await getTranslations();
 
   return (
-    <section id="network" data-ground="paper" className={cn(shared.paper, styles.section)}>
+    <section id="network" data-ground="panel" className={cn(shared.panel, styles.section)}>
       <div className={shared.wrap}>
         <Rise index={0} className={styles.head}>
           <FormHeadline

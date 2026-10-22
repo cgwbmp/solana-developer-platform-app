@@ -7,17 +7,17 @@ import { Rise } from "./rise";
 import { LoopGate } from "./start/loop-gate";
 import styles from "./start/start.module.css";
 import { StartDoor } from "./start/start-door";
-import { StartMark } from "./start/start-mark";
+import { StartLight } from "./start/start-light";
 
-/** The close: the last headline, the glass Solana mark, and the sign-up door across the page. */
+/** The close: the last headline, the Solana mark in light, and the sign-up door across the page. */
 export async function StartSection({ links }: { links: HomepageLinks }) {
   const t = await getTranslations();
 
   return (
     <LoopGate id="start" data-ground="night" className={cn(shared.night, styles.section)}>
-      <StartMark className={styles.mark} />
+      <StartLight />
       <div className={cn(shared.wrap, styles.inner)}>
-        <Rise index={0} className={styles.text}>
+        <Rise index={0} className={styles.text} data-light-clearing>
           <FormHeadline
             as="h2"
             className={styles.title}

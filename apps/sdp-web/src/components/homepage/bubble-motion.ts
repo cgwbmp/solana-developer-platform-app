@@ -4,7 +4,8 @@ import { restartAttribute } from "./restart-animation";
 
 /*
  * The motion the page's bubbles (a pill in two rings) share: the timeline runner of the bubbles
- * that repeat a gesture on their own (pillars, privacy).
+ * that repeat a gesture on their own (privacy), and the light that follows the pointer in the live
+ * ones (payments, privacy).
  */
 
 /** On wide screens every bubble is staggered on the page by this much, in page order. */
@@ -14,7 +15,7 @@ export const BUBBLE_LAND_DELAY = 900;
 
 /**
  * Where a bubble's clock starts: on wide screens it waits for its `slot` in page order (the
- * stack's three come first, then the pillars', payments' and privacy's); on a phone it starts at once.
+ * stack's three come first, then payments' and privacy's); on a phone it starts at once.
  */
 export function bubbleClockStart(slot: number) {
   return window.matchMedia(NARROW_QUERY).matches ? 0 : -slot * STAGGER;
@@ -88,6 +89,42 @@ export function runBubbleLoop(
     if (raf) window.cancelAnimationFrame(raf);
     for (const id of timers) window.clearTimeout(id);
     stopWatching();
+  };
+}
+
+/**
+ * A live bubble (bubble.module.css `.live`) answers the pointer: the light in its pill follows it
+ * (--mx and --my on the bubble, from the pill's box), and `onHover` hears when it is over the
+ * rings, so a bubble with its own timeline can keep its word under the cursor. Hover devices only.
+ * Returns the stop function.
+ */
+export function followPointer(
+  root: HTMLElement,
+  pill: HTMLElement,
+  onHover?: (over: boolean) => void
+) {
+  const ring = root.firstElementChild;
+  if (!window.matchMedia?.("(hover: hover)").matches || !ring) return () => {};
+  const move = (event: PointerEvent) => {
+    const box = pill.getBoundingClientRect();
+    root.style.setProperty(
+      "--mx",
+      `${(((event.clientX - box.left) / box.width) * 100).toFixed(1)}%`
+    );
+    root.style.setProperty(
+      "--my",
+      `${(((event.clientY - box.top) / box.height) * 100).toFixed(1)}%`
+    );
+  };
+  const enter = () => onHover?.(true);
+  const leave = () => onHover?.(false);
+  root.addEventListener("pointermove", move, { passive: true });
+  ring.addEventListener("pointerenter", enter);
+  ring.addEventListener("pointerleave", leave);
+  return () => {
+    root.removeEventListener("pointermove", move);
+    ring.removeEventListener("pointerenter", enter);
+    ring.removeEventListener("pointerleave", leave);
   };
 }
 

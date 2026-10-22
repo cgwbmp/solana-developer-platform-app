@@ -58,7 +58,7 @@ describe("HomepageFooter", () => {
     );
     expect(hrefs).toEqual({
       Issuance: "#issuance",
-      Payments: "#payments",
+      Payments: "#payments-api",
       Markets: "#markets",
       Privacy: "#privacy",
       Interfaces: "#interfaces",

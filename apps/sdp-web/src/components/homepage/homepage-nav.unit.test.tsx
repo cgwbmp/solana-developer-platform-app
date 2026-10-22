@@ -120,7 +120,7 @@ describe("HomepageNav", () => {
 
     expect(hrefs("homepage-nav-platform")).toEqual([
       "#issuance",
-      "#payments",
+      "#payments-api",
       "#markets",
       "#privacy",
       "#stack",

@@ -127,6 +127,33 @@
   }
 }
 
+/*
+ * The mark as light (start-light.tsx): a canvas over the whole section, under the words, faded in
+ * once it draws; the glass S stands in until then and wherever WebGL is missing. On a phone the
+ * mark stands over the headline, so the close makes room for it.
+ */
+.light {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.lightCanvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: lightIn 600ms var(--e) both;
+}
+
+@keyframes lightIn {
+  from {
+    opacity: 0;
+  }
+}
+
 /* the loops wait while the section is off screen or the tab is hidden */
 .section:not([data-loops="on"]) .mark,
 .section:not([data-loops="on"]) .pill {
@@ -152,14 +179,19 @@
   margin-top: clamp(56px, 6vw, 88px);
   padding: clamp(26px, 3.4vw, 44px) clamp(24px, 3.4vw, 48px);
   border-radius: 18px;
-  background: var(--paper);
-  color: var(--ink);
-  box-shadow: 0 30px 80px -40px #9945ff66;
+  /* a pane a step above the night, a hairline edge */
+  background: linear-gradient(180deg, #16151b 0%, #111015 100%);
+  color: var(--night-ink);
+  box-shadow:
+    inset 0 0 0 1px #ffffff14,
+    inset 0 1px 0 #ffffff0f,
+    0 40px 100px -50px #9945ff80;
   font: 400 clamp(28px, 3.6vw, 52px) / 1 var(--font);
   letter-spacing: -0.025em;
   text-decoration: none;
   transition:
     background 200ms var(--micro),
+    box-shadow 200ms var(--micro),
     transform 300ms var(--e);
 }
 
@@ -172,15 +204,25 @@
   pointer-events: none;
   opacity: 0;
   background: radial-gradient(
-    420px 220px at var(--mx, 50%) var(--my, 50%),
-    #9945ff1f,
+    460px 240px at var(--mx, 50%) var(--my, 50%),
+    #9945ff2e,
     #9945ff00 70%
   );
   transition: opacity 400ms var(--e);
 }
 
 .door:hover {
-  background: #fff;
+  background: linear-gradient(180deg, #1a1820 0%, #131218 100%);
+  box-shadow:
+    inset 0 0 0 1px #9945ff4d,
+    inset 0 1px 0 #ffffff14,
+    0 40px 110px -46px #9945ffa6;
+}
+
+.section .door:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 4px;
+  border-radius: 18px;
 }
 
 .door:hover::before {
@@ -199,7 +241,7 @@
 .doorNote {
   font: 500 clamp(15px, 1.2vw, 18px) / 1.4 var(--font);
   letter-spacing: 0;
-  color: #0f0f1399;
+  color: var(--night-ink2);
 }
 
 /* the arrow in a round hairline knob; on hover the knob fills with violet and the arrow flies out */
@@ -213,10 +255,10 @@
   width: clamp(64px, 6vw, 92px);
   height: clamp(64px, 6vw, 92px);
   overflow: hidden;
-  border: 1px solid #0f0f1324;
+  border: 1px solid #ffffff29;
   border-radius: 50%;
-  background: #fff;
-  color: var(--ink);
+  background: #ffffff08;
+  color: var(--night-ink);
   translate: var(--kx, 0px) var(--ky, 0px);
   transition:
     translate 500ms cubic-bezier(0.2, 0.9, 0.3, 1.2),
@@ -291,6 +333,20 @@
   }
 }
 
+/* wide enough for "wave of finance" on one line */
+@media (min-width: 1600px) {
+  .inner {
+    grid-template-columns: minmax(0, 700px) minmax(0, 1fr);
+  }
+}
+
+/* a tablet standing up: as tall as its content */
+@media (max-width: 1240px) and (orientation: portrait) {
+  .section {
+    min-height: 0;
+  }
+}
+
 /* where the words take more of the width, the S steps right and shrinks, so it never sits under them */
 @media (max-width: 1100px) {
   .mark {
@@ -311,6 +367,11 @@
 }
 
 @media (max-width: 760px) {
+  /* close-light.ts stands the mark over the headline at the same width */
+  .section:has(> .light[data-mode="live"]) {
+    padding-top: 220px;
+  }
+
   .mark {
     left: 40%;
     top: auto;
@@ -321,6 +382,11 @@
 }
 
 @media (max-width: 600px) {
+  /* as tall as its content, no black under the card */
+  .section {
+    min-height: 0;
+  }
+
   .knob {
     width: 56px;
     height: 56px;
@@ -338,6 +404,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .lightCanvas,
   .mark,
   .title[data-state="solid"] .pill,
   .door:hover .arrow,

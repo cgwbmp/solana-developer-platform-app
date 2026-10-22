@@ -32,7 +32,8 @@
   top: 0;
   z-index: 50;
   height: var(--nav-height);
-  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  /* nearly opaque: the bar stays paper over the dark panels, not a grey veil */
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
   -webkit-backdrop-filter: blur(14px) saturate(1.1);
   backdrop-filter: blur(14px) saturate(1.1);
   border-bottom: 1px solid transparent;
@@ -56,11 +57,15 @@
 }
 
 /* the SDP lockup; the dark one over night */
+/* a finger tall, without moving the bar */
 .brand {
   position: relative;
   display: block;
+  box-sizing: content-box;
   width: 78px;
   height: 30px;
+  padding-block: 7px;
+  margin-block: -7px;
   justify-self: start;
 }
 
@@ -152,6 +157,11 @@
 .itemOpen .trigger::after,
 .itemHere .trigger::after {
   transform: scaleX(1);
+}
+
+/* one underline in the bar: while a menu is open, the current section's mark steps back */
+.menu:has(.itemOpen) .itemHere:not(.itemOpen) .trigger::after {
+  transform: scaleX(0);
 }
 
 .itemOpen .trigger svg {
@@ -288,14 +298,12 @@
   display: inline-flex;
 }
 
-.lang button,
-.mobileLang button {
+.lang button {
   color: var(--ink3);
   transition: color 700ms var(--e);
 }
 
-.lang button:hover,
-.mobileLang button:hover {
+.lang button:hover {
   color: var(--ink);
   background: var(--paper2);
 }
@@ -348,7 +356,9 @@
   pointer-events: auto;
 }
 
-/* ── the phone menu ── */
+/* ── the phone menu ──
+   One scroll at most, its bar hidden (it still scrolls), and the account actions pinned at its
+   foot, the links that scroll under them fading out instead of being cut. */
 .mobile {
   position: fixed;
   top: var(--nav-height);
@@ -356,11 +366,17 @@
   right: 0;
   bottom: 0;
   z-index: 49;
-  display: block;
+  display: flex;
+  flex-direction: column;
   padding: 8px 20px calc(24px + env(safe-area-inset-bottom));
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-width: none;
   background: var(--paper);
+}
+
+.mobile::-webkit-scrollbar {
+  display: none;
 }
 
 .mobile[hidden] {
@@ -368,6 +384,7 @@
 }
 
 .mobileLink {
+  flex: none;
   display: block;
   padding: 14px 0;
   border-bottom: 1px solid var(--line2);
@@ -376,17 +393,27 @@
   text-decoration: none;
 }
 
-/* the bar keeps its language button until the account actions fold away (900px) */
-.mobileLang {
-  display: none;
-  padding-top: 14px;
-}
-
 .mobileCta {
+  position: sticky;
+  bottom: calc(-24px - env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
-  margin-top: 24px;
+  margin-top: auto;
+  margin-bottom: calc(-24px - env(safe-area-inset-bottom));
+  padding: 16px 0 calc(24px + env(safe-area-inset-bottom));
+  background: var(--paper);
+}
+
+.mobileCta::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -28px;
+  height: 28px;
+  background: linear-gradient(#fbfaf900, var(--paper));
+  pointer-events: none;
 }
 
 .mobileCta a {
@@ -502,30 +529,50 @@
   }
 }
 
-/* on a phone the account actions fold too: the burger at the right edge */
+/* the burger sheet on a wide tablet: the links on the bar's column, and no second pair of account
+   buttons while the bar shows them */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .mobile {
+    padding-inline: max(20px, calc((100vw - var(--band)) / 2));
+  }
+
+  .mobileCta {
+    display: none;
+  }
+}
+
+/* a short phone (an SE): the links sit closer, so all of them fit above the pinned foot */
+@media (max-height: 720px) {
+  .mobileLink {
+    padding: 11px 0;
+    font-size: 17px;
+  }
+}
+
+/* a phone on its side: the foot scrolls with the links, pinned it would take half the screen */
+@media (max-height: 500px) {
+  .mobileCta {
+    position: static;
+    margin-bottom: 0;
+  }
+
+  .mobileCta::before {
+    display: none;
+  }
+}
+
+/* on a phone the account actions fold into the menu; the language button stays in the bar, beside
+   the burger at the right edge */
 @media (max-width: 900px) {
-  .bar {
-    background: color-mix(in srgb, var(--paper) 96%, transparent);
-  }
-
-  .inner {
-    grid-template-columns: auto 1fr;
-  }
-
-  .right {
+  .ghost,
+  .fill {
     display: none;
   }
 
   .burger {
-    grid-column: 2;
-    justify-self: end;
     width: 44px;
     height: 44px;
     margin-right: -10px;
-  }
-
-  .mobileLang {
-    display: block;
   }
 }
 
