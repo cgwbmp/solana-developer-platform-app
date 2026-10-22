@@ -17,8 +17,10 @@ import {
   PAYMENT_TRANSFER_TYPES,
   RAMP_TRANSFER_TYPES,
   TRANSFER_CHAIN_VERDICT_STATUSES,
+  type TransferLandingStatus,
   type PaymentTransferStatus as TransferStatus,
   type PaymentTransferType as TransferType,
+  transferLandingStatus,
   WALLET_TRANSFER_TYPES,
 } from "@sdp/types/payments";
 import { SOL_DECIMALS } from "@sdp/types/well-known-tokens";
@@ -522,6 +524,16 @@ async function updateTransferRecord(
   if (updated) {
     return { outcome: "updated", row: updated };
   }
+  if (!isRampTransferType(transfer.type) && patch.status === "finalized") {
+    const upgraded = await repository.updateTransfer({
+      ...change,
+      expectedStatus: "confirmed",
+      status: "finalized",
+    });
+    if (upgraded) {
+      return { outcome: "updated", row: upgraded };
+    }
+  }
 
   const current = await repository.getTransferById({
     transferId: transfer.id,
@@ -598,7 +610,11 @@ async function releaseUnsentRampDeposit(
 
 /**
  * A failure after the durable start marker remains processing for chain
- * reconciliation. Before that marker, no broadcast was possible and the
+ * reconciliation, and the request answers with the row as it stands now, so a
+ * verdict reconciliation already wrote is what the caller sees (APE-892): a
+ * success closes the audit intent like a concurrent verdict, and a failure
+ * answers exactly as a later replay of the row would.
+ * Before that marker, no broadcast was possible and the
  * transfer can fail normally; an unsigned off-ramp deposit is released.
  */
 async function settleTransferExecutionFailure(
@@ -612,7 +628,21 @@ async function settleTransferExecutionFailure(
   const submitted = await recorder.submittedRow();
   if (submitted && !isDefiniteExecutionFailure(error)) {
     logSubmittedUnconfirmed(transfer, submitted.signature, error);
-    return success(c, toPayload(submitted));
+    const current = await getPaymentsRepository(c).getTransferById({
+      transferId: transfer.id,
+      organizationId: transfer.organization_id,
+      projectId: transfer.project_id,
+    });
+    if (!current) {
+      throw internalError("Payment transfer record not found after submission");
+    }
+    if (current.status === "failed") {
+      throw failedTransferError(current);
+    }
+    if (isSuccessfulPaymentTransferStatus(current.status)) {
+      await onConcurrentChainVerdict?.(current);
+    }
+    return success(c, toPayload(current));
   }
   const message = error instanceof Error ? error.message : "Unknown transfer error";
   const answer = mapTransferExecutionError(error);
@@ -661,6 +691,7 @@ async function executeSponsoredTransfer(
   params: {
     sourceWallet: CustodyWallet;
     submissionStore: SignedSubmissionStore;
+    landingStatus: TransferLandingStatus;
     buildInstructions: (context: {
       signer: TransactionSigner;
       feePayer: Address;
@@ -711,7 +742,7 @@ async function executeSponsoredTransfer(
   });
 
   const confirmation = await confirmTransaction(rpc, signature, {
-    commitment: "confirmed",
+    commitment: params.landingStatus,
   });
 
   if (confirmation.err) {
@@ -730,7 +761,8 @@ async function executeSolTransfer(
   sourceWallet: CustodyWallet,
   destinationAddress: Address,
   amount: string,
-  submissionStore: SignedSubmissionStore
+  submissionStore: SignedSubmissionStore,
+  landingStatus: TransferLandingStatus
 ): Promise<{ signature: string; slot: number | null; blockTime: string | null }> {
   const lamports = parseTokenAmount(amount, SOL_DECIMALS);
   if (lamports <= 0n) {
@@ -739,6 +771,7 @@ async function executeSolTransfer(
   return executeSponsoredTransfer(c, {
     sourceWallet,
     submissionStore,
+    landingStatus,
     buildInstructions: async ({ signer }) => [
       getTransferSolInstruction({
         source: signer,
@@ -756,11 +789,13 @@ async function executeSplTransfer(
   mintAddress: Address,
   amount: string,
   submissionStore: SignedSubmissionStore,
-  source: SplTransferSource | undefined
+  source: SplTransferSource | undefined,
+  landingStatus: TransferLandingStatus
 ): Promise<{ signature: string; slot: number | null; blockTime: string | null }> {
   return executeSponsoredTransfer(c, {
     sourceWallet,
     submissionStore,
+    landingStatus,
     buildInstructions: async ({ signer, feePayer }) => {
       const { createDestinationAtaInstruction, transferInstruction } =
         await buildSplTransferInstructions({
@@ -797,6 +832,18 @@ function replayTransferRow(c: AppContext, row: TransferRow): Response {
   if (row.status !== "failed") {
     return success(c, buildTransferReplayPayload(row));
   }
+  // Returned, not thrown: replayFromRecord marks the Response the finder builds.
+  return appErrorResponse(c, failedTransferError(row));
+}
+
+/**
+ * The error a failed transfer row answers with: the code its request recorded,
+ * or `TRANSACTION_FAILED` for a row the reconciler failed from the chain.
+ *
+ * @param row - A transfer row whose status is `failed`.
+ * @returns The error a replay of the row's key answers with.
+ */
+function failedTransferError(row: TransferRow): AppError {
   const recorded = row.provider_data[EXECUTION_FAILURE_KEY];
   const recordedCode =
     typeof recorded === "object" && recorded !== null && "code" in recorded
@@ -805,14 +852,10 @@ function replayTransferRow(c: AppContext, row: TransferRow): Response {
   // A row the reconciler failed from the chain records no code: it is a
   // transaction failure.
   const code = isErrorCode(recordedCode) ? recordedCode : "TRANSACTION_FAILED";
-  // Returned, not thrown: replayFromRecord marks the Response the finder builds.
-  return appErrorResponse(
-    c,
-    new AppError(
-      code,
-      `${row.error ?? "The transfer failed"}. This Idempotency-Key belongs to a transfer that failed; send the request again with a new Idempotency-Key to try again.`,
-      { transferId: row.id, status: row.status }
-    )
+  return new AppError(
+    code,
+    `${row.error ?? "The transfer failed"}. This Idempotency-Key belongs to a transfer that failed; send the request again with a new Idempotency-Key to try again.`,
+    { transferId: row.id, status: row.status }
   );
 }
 
@@ -911,6 +954,7 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
   markIdempotencyCommitted(c);
 
   const submissionStore = createTransferSignedSubmissionStore(getPaymentsRepository(c), transfer);
+  const landingStatus = transferLandingStatus(transfer.type);
   // The tamper-evident ledger admits the movement before any bytes can reach
   // the chain; a submission whose confirmation never lands leaves the intent
   // unresolved, which is exactly the state reconciliation pages on.
@@ -952,11 +996,12 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
         operation.sourceWallet,
         operation.destinationAddress,
         operation.amount,
-        submissionStore
+        submissionStore,
+        landingStatus
       );
       const updated = resolveTransferUpdateResult(
         await updateTransferRecord(c, transfer, {
-          status: "confirmed",
+          status: landingStatus,
           signature: solResult.signature,
           slot: solResult.slot,
           blockTime: solResult.blockTime,
@@ -977,12 +1022,13 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
       mintAddress,
       operation.amount,
       submissionStore,
-      rampClaim?.splSource
+      rampClaim?.splSource,
+      landingStatus
     );
 
     const updated = resolveTransferUpdateResult(
       await updateTransferRecord(c, transfer, {
-        status: "confirmed",
+        status: landingStatus,
         signature: result.signature,
         slot: result.slot,
         blockTime: result.blockTime,
