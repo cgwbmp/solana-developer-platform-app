@@ -48,6 +48,7 @@ import { collectDueRecurringPayments } from "@/services/jobs/collect-recurring-p
 import { cancelRecurringPaymentsActivatedByKey } from "@/services/payments/recurring-payments/cancel-activated-by-key";
 import { skipRefusedRecurringCollectionPeriod } from "@/services/payments/recurring-payments/collection";
 import * as recurringShared from "@/services/payments/recurring-payments/shared";
+import * as paymentAmounts from "@/services/payments/token-amount";
 import { TEST_SOLANA_ADDRESSES } from "@/test/fixtures/tokens";
 import { authenticateTestClerkUser } from "@/test/helpers/clerk";
 import {
@@ -103,6 +104,7 @@ import {
 } from "@/test/helpers/recurring-payments";
 import { required } from "@/test/helpers/required";
 import { sendTransactionPreflightError } from "@/test/helpers/rpc-errors";
+import { respondMintAccounts, scaledUiAmountConfig } from "@/test/helpers/token-mints";
 
 // Every mutation carries a fresh key unless a test sets its own (HOO-1918).
 const app = withIdempotencyKeys(baseApp);
@@ -882,6 +884,7 @@ describe("Payments routes — recurring", () => {
 
     const issuedMint = (await generateKeyPairSigner()).address;
     const pausedMint = (await generateKeyPairSigner()).address;
+    const scaledMint = (await generateKeyPairSigner()).address;
     await seedIssuedTokenMint({
       projectId: TEST_PROJECT.id,
       mintAddress: issuedMint,
@@ -892,7 +895,37 @@ describe("Payments routes — recurring", () => {
       mintAddress: pausedMint,
       status: "paused",
     });
+    await seedIssuedTokenMint({
+      projectId: TEST_PROJECT.id,
+      mintAddress: scaledMint,
+      status: "active",
+    });
+    respondMintAccounts(recurringExecution.rpc, {
+      mints: new Map([
+        [issuedMint, { decimals: 6, extensions: null }],
+        [
+          scaledMint,
+          {
+            decimals: 6,
+            extensions: [
+              scaledUiAmountConfig({
+                multiplier: 2,
+                newMultiplier: 2,
+                newMultiplierEffectiveTimestamp: 0n,
+              }),
+            ],
+          },
+        ],
+      ]),
+      clockUnixTimestamp: 1_750_000_000n,
+    });
     await expectTokenRejected(pausedMint);
+
+    const scaledRes = await createRecurring(scaledMint);
+    expect(scaledRes.status).toBe(400);
+    expect(errorResponseSchema.parse(await scaledRes.json()).error.message).toBe(
+      "Payments do not support the ScaledUiAmountConfig mint extension"
+    );
 
     const issuedRes = await createRecurring(issuedMint);
     expect(issuedRes.status).toBe(201);
@@ -2049,6 +2082,46 @@ describe("Payments routes — recurring", () => {
     expect(sendTransactionMock).toHaveBeenCalledTimes(3);
   });
 
+  it("cancels an active recurring payment whose issued token was paused after activation", async () => {
+    const issuedMint = (await generateKeyPairSigner()).address;
+    const issuedTokenId = await seedIssuedTokenMint({
+      projectId: TEST_PROJECT.id,
+      mintAddress: issuedMint,
+      status: "active",
+    });
+    const activated = await activateRecurringPaymentFixture({
+      ...DEFAULT_RECURRING_FIXTURE,
+      token: issuedMint,
+    });
+    await getDb(env)
+      .prepare("UPDATE issued_tokens SET status = 'paused' WHERE id = ?")
+      .bind(issuedTokenId)
+      .run();
+
+    const cancelRes = await app.request(
+      `/v1/payments/recurring-payments/${activated.id}/cancel`,
+      { method: "POST", headers: RECURRING_HEADERS, body: "{}" },
+      env
+    );
+
+    expect(cancelRes.status).toBe(200);
+    expect((await parseRecurringResponse(cancelRes)).data.recurringPayment).toMatchObject({
+      id: activated.id,
+      status: "canceled",
+    });
+    expect(
+      await getDb(env)
+        .prepare(
+          `SELECT status, signature
+             FROM payment_recurring_payment_lifecycle_attempts
+            WHERE recurring_payment_id = ? AND operation = 'cancel'`
+        )
+        .bind(activated.id)
+        .first<{ status: string; signature: string | null }>()
+    ).toEqual({ status: "confirmed", signature: poolSentSignatures()[2] });
+    expect(sendTransactionMock).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps a cancel whose send outcome is unknown in flight with its signature saved", async () => {
     const activated = await activateRecurringPaymentFixture(DEFAULT_RECURRING_FIXTURE);
     sendTransactionMock.mockRejectedValueOnce(new Error("RPC response lost"));
@@ -3052,17 +3125,14 @@ describe("Payments routes — recurring", () => {
     const mintLookupReleased = new Promise<void>((resolve) => {
       releaseMintLookup = resolve;
     });
-    const getAccountInfo = getAccountInfoMock.getMockImplementation();
-    if (!getAccountInfo) {
-      throw new Error("Account info mock is not installed");
-    }
-    getAccountInfoMock.mockImplementationOnce(async (...args) => {
-      if (signalMintLookupReached) {
-        signalMintLookupReached();
-      }
-      await mintLookupReleased;
-      return getAccountInfo(...args);
-    });
+    const loadPaymentMint = paymentAmounts.loadPaymentMint;
+    const mintLookup = vi
+      .spyOn(paymentAmounts, "loadPaymentMint")
+      .mockImplementationOnce(async (mint) => {
+        if (signalMintLookupReached) signalMintLookupReached();
+        await mintLookupReleased;
+        return loadPaymentMint(mint);
+      });
 
     const preparePromise = app.request(
       `/v1/payments/subscriptions/${subscriptionId}/prepare-authorization`,
@@ -3094,6 +3164,7 @@ describe("Payments routes — recurring", () => {
     }
 
     const prepareRes = await preparePromise;
+    mintLookup.mockRestore();
     expect(prepareRes.status).toBe(409);
     const persisted = await repo.getSubscriptionById({
       subscriptionId,
@@ -4048,13 +4119,9 @@ describe("Payments routes — recurring", () => {
       const activated = await activateProductionUsdcSchedule();
 
       expect(activated.token).toBe(MAINNET_USDC_MINT);
-      expect(recurringExecution.rpc.calls).toContainEqual({
-        cluster: "mainnet-beta",
-        method: "getTokenSupply",
-      });
-      expect(new Set(recurringExecution.rpc.calls.map((call) => call.cluster))).toEqual(
-        new Set(["mainnet-beta"])
-      );
+      expect(
+        recurringExecution.rpc.calls.filter((call) => call.method === "getTokenSupply")
+      ).toEqual([]);
       expect(
         new Set(
           [
@@ -4088,14 +4155,7 @@ describe("Payments routes — recurring", () => {
       const tokenSupplyReads = recurringExecution.rpc.requests
         .slice(requestsBefore)
         .filter((request) => request.method === "getTokenSupply");
-      const clustersReadingMint = (mint: string) =>
-        new Set(
-          tokenSupplyReads
-            .filter((request) => request.params[0] === mint)
-            .map((request) => request.cluster)
-        );
-      expect(clustersReadingMint(DEVNET_USDC_MINT)).toEqual(new Set(["devnet"]));
-      expect(clustersReadingMint(MAINNET_USDC_MINT)).toEqual(new Set(["mainnet-beta"]));
+      expect(tokenSupplyReads).toEqual([]);
       const clustersConfirming = (collectionSignature: string) =>
         new Set(
           confirmTransactionMock.mock.calls
