@@ -477,8 +477,8 @@ async function seedUnboundWallet(): Promise<void> {
   await getDb(env)
     .prepare(
       `INSERT INTO custody_wallets
-         (id, custody_config_id, wallet_id, public_key, status)
-       VALUES (?, ?, ?, ?, 'active')`
+         (id, custody_config_id, wallet_id, public_key, purpose, status)
+       VALUES (?, ?, ?, ?, 'transfer', 'active')`
     )
     .bind(UNBOUND_CUSTODY_WALLET_ID, TEST_CONFIG_ID, UNBOUND_WALLET_ID, unboundWallet.address)
     .run();
@@ -516,7 +516,7 @@ async function seedReplacementCustodyWallet(params: {
         walletId: TEST_WALLET_ID,
         publicKey: params.publicKey,
         label: null,
-        purpose: null,
+        purpose: "transfer",
         status: "active",
       },
     ],
@@ -5360,6 +5360,77 @@ describe("Payments routes — recurring", () => {
       action === undefined
         ? `/v1/payments/recurring-payments/${id}`
         : `/v1/payments/recurring-payments/${id}/${action}`;
+
+    it.each(["activate", "resume", "collect", "update", "update_same_source"] as const)(
+      "refuses %s from a specialized wallet before claiming its key",
+      async (action) => {
+        const schedule =
+          action === "activate"
+            ? await createRecurringPaymentFixture(DEFAULT_RECURRING_FIXTURE)
+            : await activateRecurringPaymentFixture(DEFAULT_RECURRING_FIXTURE);
+        if (action === "resume") {
+          const canceled = await app.request(
+            actionPath(schedule.id, "cancel"),
+            { method: "POST", headers: RECURRING_HEADERS, body: "{}" },
+            env
+          );
+          expect(canceled.status).toBe(200);
+        }
+        await getDb(env)
+          .prepare("UPDATE custody_wallets SET purpose = 'dvp_settlement_authority' WHERE id = ?")
+          .bind(TEST_CUSTODY_WALLET_ID)
+          .run();
+        const key = crypto.randomUUID();
+        const updating = action === "update" || action === "update_same_source";
+        const signerCalls = createOrgSignerForCustodyWalletMock.mock.calls.length;
+        const response = await app.request(
+          actionPath(schedule.id, updating ? undefined : action),
+          {
+            method: updating ? "PATCH" : "POST",
+            headers: keyed(key),
+            body: JSON.stringify(
+              action === "update_same_source"
+                ? { sourceCustodyWalletId: TEST_CUSTODY_WALLET_ID, amount: "30.00" }
+                : updating
+                  ? { amount: "30.00" }
+                  : {}
+            ),
+          },
+          env
+        );
+        expect(response.status).toBe(403);
+        expect(await errorCode(response)).toBe("FORBIDDEN");
+        expect(await storedKeyCount(key)).toBe(0);
+        expect(createOrgSignerForCustodyWalletMock).toHaveBeenCalledTimes(signerCalls);
+      }
+    );
+
+    it("cancels an active schedule from a specialized wallet, signing the exit", async () => {
+      const activated = await activateRecurringPaymentFixture(DEFAULT_RECURRING_FIXTURE);
+      await getDb(env)
+        .prepare("UPDATE custody_wallets SET purpose = 'dvp_settlement_authority' WHERE id = ?")
+        .bind(TEST_CUSTODY_WALLET_ID)
+        .run();
+
+      const response = await app.request(
+        actionPath(activated.id, "cancel"),
+        { method: "POST", headers: keyed(crypto.randomUUID()), body: "{}" },
+        env
+      );
+
+      expect(response.status).toBe(200);
+      expect((await parseRecurringResponse(response)).data.recurringPayment).toMatchObject({
+        id: activated.id,
+        status: "canceled",
+      });
+      expect(createOrgSignerForCustodyWalletMock).toHaveBeenLastCalledWith(
+        env,
+        TEST_ORG.id,
+        TEST_PROJECT.id,
+        TEST_CUSTODY_WALLET_ID,
+        "recurring.cancel"
+      );
+    });
 
     /** The original request crashed after its effects: its key is in progress, its lease lapsed. */
     async function crashIdempotencyKey(key: string) {
