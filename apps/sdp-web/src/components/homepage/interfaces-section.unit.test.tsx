@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { IDEMPOTENCY_REQUIRED_ROUTES } from "@sdp/types/idempotency-required-routes";
 import { DEFAULT_SDP_API_URL } from "@sdp/types/site";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -166,6 +167,19 @@ describe("interface snippets", () => {
       expect(text).toMatch(url);
       expect(text).toContain('Authorization: Bearer sk_test_…"');
       expect(text.startsWith(`$ curl ${snippet.method === "GET" ? "-G" : "-X POST"}`)).toBe(true);
+    }
+  });
+
+  it.each(INTERFACE_SNIPPETS)("$mode sends a key where the API requires one", (snippet) => {
+    const route = (method: string, path: string) =>
+      `${method} ${path.replace(/\{[^}]+\}|:[^/]+/g, "*")}`;
+    const required = IDEMPOTENCY_REQUIRED_ROUTES.some((each) => {
+      const [method, path] = each.split(" ") as [string, string];
+      return route(method, path) === route(snippet.method, snippet.path);
+    });
+    for (const request of [snippet.request, snippet.narrowRequest]) {
+      const text = request.map(lineText).join("\n");
+      expect(/-H "Idempotency-Key: [^"]+"/.test(text)).toBe(required);
     }
   });
 

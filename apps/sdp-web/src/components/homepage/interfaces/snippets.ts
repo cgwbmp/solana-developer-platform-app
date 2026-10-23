@@ -29,6 +29,8 @@ const API = DEFAULT_SDP_API_URL;
 const PROMPT: CodeToken = { kind: "prompt", text: "$" };
 const AUTH = '-H "Authorization: Bearer sk_test_…"';
 const JSON_TYPE = '-H "Content-Type: application/json"';
+/** A transfer moves money, so the API refuses one without a key (IDEMPOTENCY_REQUIRED_ROUTES). */
+const IDEMPOTENCY = '-H "Idempotency-Key: payment-invoice-1234"';
 
 const key = (text: string): CodeToken => ({ kind: "key", text: `"${text}"` });
 const value = (text: string): CodeToken => ({ kind: "value", text: `"${text}"` });
@@ -41,6 +43,7 @@ export const INTERFACE_SNIPPETS: readonly InterfaceSnippet[] = [
     request: [
       [PROMPT, ` curl -X POST ${API}/v1/payments/transfers \\`],
       [`    ${AUTH} \\`],
+      [`    ${IDEMPOTENCY} \\`],
       [`    ${JSON_TYPE} \\`],
       [`    -d '{"sourceCustodyWalletId":"cwlt_…","token":"USDC",`],
       [`         "amount":"24800.00","destination":"7xKX…gAsU"}'`],
@@ -49,6 +52,7 @@ export const INTERFACE_SNIPPETS: readonly InterfaceSnippet[] = [
       [PROMPT, " curl -X POST \\"],
       [`  ${API}/v1/payments/transfers \\`],
       [`  ${AUTH} \\`],
+      [`  ${IDEMPOTENCY} \\`],
       [`  ${JSON_TYPE} \\`],
       ["  -d '{"],
       ["    ", key("sourceCustodyWalletId"), ': "cwlt_…",'],
