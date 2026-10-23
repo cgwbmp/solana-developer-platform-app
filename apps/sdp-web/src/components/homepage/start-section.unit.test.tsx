@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessages, type MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import { intersect, setVisibility, stubIntersectionObserver } from "@/test/visibility";
 import type { HomepageLinks } from "./homepage-links";
 
 vi.mock("@/i18n/server", async () => {
@@ -93,39 +94,10 @@ describe("StartSection markup", () => {
 });
 
 describe("LoopGate", () => {
-  function stubObserver() {
-    const callbacks: IntersectionObserverCallback[] = [];
-    vi.stubGlobal(
-      "IntersectionObserver",
-      class {
-        constructor(callback: IntersectionObserverCallback) {
-          callbacks.push(callback);
-        }
-        observe() {}
-        disconnect() {}
-      }
-    );
-    return (isIntersecting: boolean) =>
-      act(() => {
-        for (const callback of callbacks) {
-          // SAFETY: the loop gate reads only `isIntersecting` from the entry and nothing from the
-          // observer.
-          callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver);
-        }
-      });
-  }
-
-  function setVisibility(state: DocumentVisibilityState) {
-    Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
-    act(() => {
-      document.dispatchEvent(new Event("visibilitychange"));
-    });
-  }
-
-  afterEach(() => setVisibility("visible"));
+  afterEach(() => vi.restoreAllMocks());
 
   it("runs the loops only while near the screen and the tab is visible", () => {
-    const intersect = stubObserver();
+    stubIntersectionObserver();
     const { container } = render(<LoopGate id="start" />);
     const section = container.querySelector("section");
     expect(section?.getAttribute("data-loops")).toBe("off");

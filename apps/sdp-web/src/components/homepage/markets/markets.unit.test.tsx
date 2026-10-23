@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { act, cleanup, render } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 import { EnglishI18n } from "@/test/i18n";
+import { intersect, stubIntersectionObserver } from "@/test/visibility";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -19,23 +20,8 @@ vi.mock("@/i18n/server", async () => {
 import { MarketsSection } from "@/components/homepage/markets-section";
 import { MarketsChart, rateAt, yAtX } from "./markets-chart";
 
-const observers: { callback: IntersectionObserverCallback; disconnect: () => void }[] = [];
-
-class FakeIntersectionObserver {
-  disconnect = vi.fn();
-  constructor(callback: IntersectionObserverCallback) {
-    observers.push({ callback, disconnect: this.disconnect });
-  }
-  observe() {}
-  unobserve() {}
-  takeRecords() {
-    return [];
-  }
-}
-
 beforeEach(() => {
-  observers.length = 0;
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  stubIntersectionObserver();
 });
 
 afterEach(() => {
@@ -91,22 +77,7 @@ describe("MarketsChart", () => {
     if (!figure) throw new Error("no figure");
     expect(figure.getAttribute("data-drawn")).toBe("false");
 
-    const box = figure.getBoundingClientRect();
-    const entry: IntersectionObserverEntry = {
-      isIntersecting: true,
-      target: figure,
-      boundingClientRect: box,
-      intersectionRect: box,
-      intersectionRatio: 1,
-      rootBounds: null,
-      time: 0,
-    };
-    act(() => {
-      for (const { callback } of observers) {
-        // SAFETY: motion's useInView reads nothing from the observer argument.
-        callback([entry], {} as IntersectionObserver);
-      }
-    });
+    intersect(true);
     expect(figure.getAttribute("data-drawn")).toBe("true");
     expect(figure.getAttribute("data-on-screen")).toBe("true");
   });

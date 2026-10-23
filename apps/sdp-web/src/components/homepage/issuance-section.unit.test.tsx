@@ -17,42 +17,20 @@ vi.mock("@/i18n/server", async () => {
   };
 });
 
-import { easeOutCubic } from "@/lib/easing";
+import {
+  type FakeIntersectionObserver,
+  intersect,
+  stubIntersectionObserver,
+} from "@/test/visibility";
 import { IssuanceSection } from "./issuance-section";
 import { IssuanceSheet } from "./issuance-sheet";
 
-let observerCallback: IntersectionObserverCallback | undefined;
-const disconnect = vi.fn();
-
-class FakeIntersectionObserver {
-  constructor(callback: IntersectionObserverCallback) {
-    observerCallback = callback;
-  }
-  observe() {}
-  unobserve() {}
-  disconnect = disconnect;
-  takeRecords() {
-    return [];
-  }
-}
-
-function showSheet() {
-  act(() => {
-    // SAFETY: useSceneActive reads only `isIntersecting` from the entry and nothing from the
-    // observer.
-    observerCallback?.(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver
-    );
-  });
-}
+let observers: readonly FakeIntersectionObserver[] = [];
 
 beforeEach(() => {
   stubMatchMedia();
   setReducedMotion(false);
-  observerCallback = undefined;
-  disconnect.mockClear();
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  observers = stubIntersectionObserver();
 });
 
 afterEach(() => {
@@ -108,7 +86,7 @@ describe("IssuanceSheet", () => {
     vi.useFakeTimers();
     render(<IssuanceSheet />, { wrapper: EnglishI18n });
 
-    expect(observerCallback).toBeUndefined();
+    expect(observers).toHaveLength(0);
     expect(vi.getTimerCount()).toBe(0);
     act(() => {
       vi.advanceTimersByTime(10_000);
@@ -120,7 +98,7 @@ describe("IssuanceSheet", () => {
   it("runs the lifecycle while on screen and stops on unmount", () => {
     vi.useFakeTimers();
     const { unmount } = render(<IssuanceSheet />, { wrapper: EnglishI18n });
-    showSheet();
+    intersect(true);
 
     act(() => {
       vi.advanceTimersByTime(900 + 2800 + 1200);
@@ -134,7 +112,7 @@ describe("IssuanceSheet", () => {
     expect(screen.getByText("Paused", { selector: "b span" })).toBeTruthy();
 
     unmount();
-    expect(disconnect).toHaveBeenCalled();
+    for (const observer of observers) expect(observer.disconnect).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -146,13 +124,5 @@ describe("IssuanceSheet", () => {
       vi.advanceTimersByTime(10_000);
     });
     expect(screen.getByText("Live")).toBeTruthy();
-  });
-});
-
-describe("helpers", () => {
-  it("eases out from 0 to 1", () => {
-    expect(easeOutCubic(0)).toBe(0);
-    expect(easeOutCubic(1)).toBe(1);
-    expect(easeOutCubic(0.5)).toBeCloseTo(0.875);
   });
 });

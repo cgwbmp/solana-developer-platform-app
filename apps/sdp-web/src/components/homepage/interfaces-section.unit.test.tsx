@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readdirSync, readFileSync } from "node:fs";
-import path from "node:path";
 import { IDEMPOTENCY_REQUIRED_ROUTES } from "@sdp/types/idempotency-required-routes";
 import { DEFAULT_SDP_API_URL } from "@sdp/types/site";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -8,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { findPublishedPlaygroundOperation } from "@/lib/api-playground-openapi-catalog";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 // jsdom has no AnimationEvent, so React would listen for the prefixed `webkitAnimationEnd`; with
@@ -121,27 +120,12 @@ describe("InterfacesSection", () => {
 });
 
 describe("interface snippets", () => {
-  const pathsDirectory = path.resolve(__dirname, "../../../../sdp-api/src/openapi/paths");
-  const hidden = new Set([
-    "admin.ts",
-    "earn.ts",
-    "earn-treasury.ts",
-    "members.ts",
-    "onboarding.ts",
-    "organizations.ts",
-    "rpc.ts",
-  ]);
-  const publicSource = readdirSync(pathsDirectory)
-    .filter((file) => file.endsWith(".ts") && !hidden.has(file))
-    .map((file) => readFileSync(path.join(pathsDirectory, file), "utf8"))
-    .join("\n");
-
-  it.each(INTERFACE_SNIPPETS)("$method $path is a public API route", (snippet) => {
-    expect(publicSource).toMatch(
-      new RegExp(
-        `method: "${snippet.method.toLowerCase()}",\\s*path: "${escapeRegExp(snippet.path)}"`
-      )
-    );
+  // The homepage is served on every deployment, so each call must be in prod's public document.
+  it.each(INTERFACE_SNIPPETS)("$method $path is a public API route on stable", (snippet) => {
+    expect(findPublishedPlaygroundOperation(snippet.method, snippet.path, "stable")).toMatchObject({
+      method: snippet.method,
+      pathTemplate: snippet.path,
+    });
   });
 
   it.each(INTERFACE_SNIPPETS)("$mode calls its own path on the public host", (snippet) => {

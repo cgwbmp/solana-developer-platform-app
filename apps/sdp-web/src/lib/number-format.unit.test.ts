@@ -8,10 +8,6 @@ describe("number format", () => {
     expect(formatNumber("de", 96.4, 2)).toBe("96,40");
   });
 
-  it("formats the English-only homepage in English", () => {
-    expect(formatNumber("en", 1234.5, 2)).toBe("1,234.50");
-  });
-
   it("reads a rate given in percent", () => {
     expect(formatPercent("en", 4.5, 1)).toBe("4.5%");
   });

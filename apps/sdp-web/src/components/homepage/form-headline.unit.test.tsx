@@ -3,26 +3,14 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import { stubIntersectionObserver } from "@/test/visibility";
 import { FormHeadline, splitHeadline } from "./form-headline";
-
-/* never reports: the headline stays off screen, so only `start` sets it going */
-class FakeIntersectionObserver implements IntersectionObserver {
-  readonly root = null;
-  readonly rootMargin = "";
-  readonly thresholds: readonly number[] = [];
-  readonly scrollMargin = "";
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-}
 
 beforeEach(() => {
   stubMatchMedia();
   setReducedMotion(false);
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  /* never reported: the headline stays off screen, so only `start` sets it going */
+  stubIntersectionObserver();
   vi.useFakeTimers();
 });
 

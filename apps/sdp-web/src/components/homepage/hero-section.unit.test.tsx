@@ -3,8 +3,8 @@ import { cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessages, type MessageKey } from "@/i18n/messages";
-import { I18nProvider } from "@/i18n/provider";
 import { type TranslationValues, translate } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 function t(key: MessageKey, values?: TranslationValues) {
@@ -33,9 +33,7 @@ const waitlistLinks: HomepageLinks = {
 async function renderHero(links: HomepageLinks) {
   const container = document.createElement("div");
   container.innerHTML = renderToStaticMarkup(
-    <I18nProvider locale="en" messages={getMessages("en")}>
-      {await HeroSection({ links })}
-    </I18nProvider>
+    <EnglishI18n>{await HeroSection({ links })}</EnglishI18n>
   );
   return container;
 }

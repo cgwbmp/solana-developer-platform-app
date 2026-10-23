@@ -56,7 +56,6 @@ describe("WalkthroughsSection", () => {
     expect(markup).toContain('preload="none"');
     expect(markup).toContain('poster="/homepage/posters/dvp.jpg"');
     expect(markup).toContain('src="/homepage/video/dvp-demo.mp4"');
-    expect(markup).not.toContain("autoPlay");
     expect(markup).not.toMatch(/autoplay/i);
     // the DvP film burns its captions in: the track is there but not on by default
     expect(markup).toMatch(

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import { intersect, stubIntersectionObserver } from "@/test/visibility";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -35,53 +36,10 @@ const copy: StackDrawingCopy = {
   received: RECEIVED_AMOUNTS.map((amount) => `Received ${amount.toFixed(2)} USDC`),
 };
 
-let observers: FakeIntersectionObserver[] = [];
-
-class FakeIntersectionObserver implements IntersectionObserver {
-  readonly root = null;
-  readonly rootMargin = "";
-  readonly thresholds: readonly number[] = [];
-  readonly scrollMargin = "";
-  readonly targets: Element[] = [];
-  constructor(readonly callback: IntersectionObserverCallback) {
-    observers.push(this);
-  }
-  observe(target: Element) {
-    this.targets.push(target);
-  }
-  unobserve() {}
-  disconnect() {}
-  takeRecords() {
-    return [];
-  }
-}
-
-/* everything observed scrolls fully into view */
-function scrollIntoView() {
-  const rect = DOMRect.fromRect();
-  act(() => {
-    for (const observer of observers) {
-      observer.callback(
-        observer.targets.map((target) => ({
-          isIntersecting: true,
-          boundingClientRect: rect,
-          intersectionRect: rect,
-          rootBounds: null,
-          intersectionRatio: 1,
-          target,
-          time: 0,
-        })),
-        observer
-      );
-    }
-  });
-}
-
 beforeEach(() => {
-  observers = [];
   stubMatchMedia();
   setReducedMotion(false);
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  stubIntersectionObserver();
 });
 
 afterEach(() => {
@@ -153,7 +111,7 @@ describe("StackDrawing", () => {
     setReducedMotion(true);
     vi.useFakeTimers({ toFake: ["setTimeout", "requestAnimationFrame", "performance"] });
     const { container } = render(<StackDrawing copy={copy} />);
-    scrollIntoView();
+    intersect(true); // everything observed scrolls fully into view
     act(() => vi.advanceTimersByTime(900)); // the block lands
     act(() => vi.advanceTimersByTime(6000));
     const on = [...container.querySelectorAll("[data-on]")].map((el) => el.textContent);
@@ -178,7 +136,7 @@ describe("StackDrawing", () => {
       toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "performance"],
     });
     const { container } = render(<StackDrawing copy={copy} />);
-    scrollIntoView();
+    intersect(true); // everything observed scrolls fully into view
     const [, , , , knob, toast] = decorations(container);
 
     act(() => vi.advanceTimersByTime(900)); // the block lands; the route starts

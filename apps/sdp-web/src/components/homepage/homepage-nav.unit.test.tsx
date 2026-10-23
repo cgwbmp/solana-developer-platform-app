@@ -17,6 +17,7 @@ vi.mock("next/navigation", () => import("@/test/next-navigation"));
 import { getMessages } from "@/i18n/messages";
 import { translate } from "@/i18n/translate";
 import { EnglishI18n } from "@/test/i18n";
+import { FILMS, filmUrl, SERIES_URL } from "./builders/films";
 import type { HomepageLinks } from "./homepage-links";
 import { HomepageNav } from "./homepage-nav";
 import { pickGround } from "./nav/use-nav-scroll";
@@ -134,14 +135,16 @@ describe("HomepageNav", () => {
     const { container } = render(await HomepageNav({ links: openLinks }), { wrapper: EnglishI18n });
     const films = Array.from(container.querySelectorAll("#homepage-nav-builders a")).slice(3);
 
-    expect(films.map((a) => a.textContent)).toEqual([
-      "Fireblocks",
-      "Helius",
-      "Alchemy",
-      "Coinbase",
-      "BitGo",
-      t("Homepage.nav.builders.series"),
-    ]);
+    const series = films.at(-1);
+    expect(series?.textContent).toBe(t("Homepage.nav.builders.series"));
+    expect(series?.getAttribute("href")).toBe(SERIES_URL);
+    // five of the films, each linked to its own video
+    const named = films.slice(0, -1);
+    expect(named).toHaveLength(5);
+    for (const link of named) {
+      const film = FILMS.find((each) => each.name === link.textContent);
+      expect(link.getAttribute("href")).toBe(film && filmUrl(film.id));
+    }
     for (const film of films) {
       expect(film.getAttribute("target")).toBe("_blank");
       expect(film.getAttribute("rel")).toBe("noreferrer");
@@ -149,7 +152,6 @@ describe("HomepageNav", () => {
       // the accessible name starts with the visible label (WCAG 2.5.3)
       expect(film.getAttribute("aria-label")?.startsWith(film.textContent ?? "")).toBe(true);
     }
-    expect(films[0]?.getAttribute("href")).toBe("https://www.youtube.com/watch?v=ZfUtJgkE5dE");
   });
 
   it("opens a panel from its trigger, not from focus, and returns focus to it on Escape", async () => {

@@ -3,6 +3,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EnglishI18n } from "@/test/i18n";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import { stubIntersectionObserver } from "@/test/visibility";
 import { CountUp, countAt } from "./count-up";
 import {
   createRaceState,
@@ -17,17 +18,7 @@ import { SpeedRace } from "./speed-race";
 beforeEach(() => {
   stubMatchMedia();
   setReducedMotion(false);
-  vi.stubGlobal(
-    "IntersectionObserver",
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-      takeRecords() {
-        return [];
-      }
-    }
-  );
+  stubIntersectionObserver();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -61,7 +52,7 @@ describe("CountUp", () => {
     } as DOMRect);
   }
 
-  it("shows the final figure in the catalog's words and reads it once", () => {
+  it("keeps a figure already on screen at its final value, in the catalog's words, read once", () => {
     placeAt(100);
     render(<CountUp to={30} message="Homepage.network.stats.partners.value" />, {
       wrapper: EnglishI18n,
@@ -70,14 +61,6 @@ describe("CountUp", () => {
     expect(shown).toHaveLength(2);
     expect(shown[0].getAttribute("aria-hidden")).toBe("true");
     expect(shown[1].className).toBe("sr-only");
-  });
-
-  it("keeps a figure already on screen at its final value instead of counting", () => {
-    placeAt(100);
-    render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />, {
-      wrapper: EnglishI18n,
-    });
-    expect(screen.getAllByText("200+")).toHaveLength(2);
   });
 
   it("keeps the final figure on a figure that starts off screen until it counts", () => {

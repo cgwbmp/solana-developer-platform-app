@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import catalog from "@/../messages/en/homepage.json";
 import { formatNumber } from "@/lib/number-format";
+import { type FakeIntersectionObserver, stubIntersectionObserver } from "@/test/visibility";
 import { createBenchController } from "./bench-controller";
 import { buildFigure } from "./figures/build-figures";
 import { createFigurePlayer } from "./figures/player";
@@ -117,22 +118,10 @@ describe("createFigurePlayer", () => {
 });
 
 describe("createBenchController", () => {
-  let observers: { callback: IntersectionObserverCallback; disconnect: () => void }[] = [];
+  let observers: readonly FakeIntersectionObserver[] = [];
 
   beforeEach(() => {
-    observers = [];
-    vi.stubGlobal(
-      "IntersectionObserver",
-      class {
-        callback: IntersectionObserverCallback;
-        disconnect = vi.fn();
-        constructor(callback: IntersectionObserverCallback) {
-          this.callback = callback;
-          observers.push(this);
-        }
-        observe() {}
-      }
-    );
+    observers = stubIntersectionObserver();
     vi.stubGlobal("matchMedia", () => ({
       matches: false,
       addEventListener: vi.fn(),

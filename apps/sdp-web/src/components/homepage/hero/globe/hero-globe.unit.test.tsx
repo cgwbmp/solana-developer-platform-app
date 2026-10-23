@@ -3,6 +3,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { EnglishI18n } from "@/test/i18n";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import { setVisibility } from "@/test/visibility";
 import { HeroGlobe } from "./hero-globe";
 import * as sceneModule from "./scene";
 import * as staticGlobeModule from "./static-globe";
@@ -82,8 +83,7 @@ describe("HeroGlobe", () => {
     const scene = { setActive: vi.fn(), dispose: vi.fn() };
     createGlobeScene.mockReturnValue(scene);
     await renderGlobe();
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
+    setVisibility("hidden");
     expect(scene.setActive).toHaveBeenLastCalledWith(false);
   });
 
@@ -105,8 +105,7 @@ describe("HeroGlobe", () => {
     expect(globe?.dataset.mode).toBe("static");
     /* the lost scene is no longer told when the tab hides */
     scene.setActive.mockClear();
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    document.dispatchEvent(new Event("visibilitychange"));
+    setVisibility("hidden");
     expect(scene.setActive).not.toHaveBeenCalled();
   });
 });

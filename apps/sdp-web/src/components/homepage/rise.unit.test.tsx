@@ -1,48 +1,23 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type FakeIntersectionObserver,
+  intersect,
+  stubIntersectionObserver,
+} from "@/test/visibility";
 import { Rise, useRiseArrived } from "./rise";
 
-let observer: FakeIntersectionObserver | undefined;
-const disconnect = vi.fn();
-
-class FakeIntersectionObserver implements IntersectionObserver {
-  readonly root = null;
-  readonly rootMargin = "";
-  readonly thresholds: readonly number[] = [];
-  readonly scrollMargin = "";
-  constructor(readonly callback: IntersectionObserverCallback) {
-    observer = this;
-  }
-  observe() {}
-  unobserve() {}
-  disconnect = disconnect;
-  takeRecords() {
-    return [];
-  }
-}
+let observers: readonly FakeIntersectionObserver[] = [];
 
 /* the block reports, its top `top` px down an 800px screen */
 function report({ isIntersecting, top }: { isIntersecting: boolean; top: number }) {
-  const current = observer;
-  if (!current) throw new Error("no observer");
   const box = DOMRect.fromRect({ y: top, width: 100, height: 100 });
-  act(() => {
-    current.callback(
-      [
-        {
-          isIntersecting,
-          boundingClientRect: box,
-          intersectionRect: box,
-          rootBounds: DOMRect.fromRect({ width: 1440, height: 800 }),
-          intersectionRatio: isIntersecting ? 1 : 0,
-          target: document.body,
-          time: 0,
-        },
-      ],
-      current
-    );
+  intersect(isIntersecting, {
+    boundingClientRect: box,
+    intersectionRect: box,
+    rootBounds: DOMRect.fromRect({ width: 1440, height: 800 }),
   });
 }
 
@@ -51,9 +26,7 @@ function Probe() {
 }
 
 beforeEach(() => {
-  observer = undefined;
-  disconnect.mockClear();
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  observers = stubIntersectionObserver();
 });
 
 afterEach(() => {
@@ -77,7 +50,7 @@ describe("Rise", () => {
 
     expect(screen.getByTestId("block").dataset.arrived).toBe("true");
     expect(screen.getByTestId("probe").textContent).toBe("true");
-    expect(disconnect).toHaveBeenCalled();
+    expect(observers[0]?.disconnect).toHaveBeenCalled();
   });
 
   it("arrives when the page opened below it", () => {

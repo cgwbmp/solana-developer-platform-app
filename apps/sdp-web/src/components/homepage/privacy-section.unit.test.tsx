@@ -5,6 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
+import {
+  type FakeIntersectionObserver,
+  intersect,
+  stubIntersectionObserver,
+} from "@/test/visibility";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -22,31 +27,7 @@ import { PrivacySection } from "./privacy-section";
 const words = ["Payments", "Issuance", "Markets", "Payroll", "Balances"];
 const label = "What stays private: payments, issuance, markets, payroll, balances";
 
-let observerCallback: IntersectionObserverCallback | undefined;
-const disconnect = vi.fn();
-
-class FakeIntersectionObserver {
-  constructor(callback: IntersectionObserverCallback) {
-    observerCallback = callback;
-  }
-  observe() {}
-  unobserve() {}
-  disconnect = disconnect;
-  takeRecords() {
-    return [];
-  }
-}
-
-function showBubble() {
-  act(() => {
-    // SAFETY: useSceneActive reads only `isIntersecting` from the entry and nothing from the
-    // observer.
-    observerCallback?.(
-      [{ isIntersecting: true } as IntersectionObserverEntry],
-      {} as IntersectionObserver
-    );
-  });
-}
+let observers: readonly FakeIntersectionObserver[] = [];
 
 function currentWord(bubble: HTMLElement) {
   return bubble.querySelector("[data-current]")?.textContent;
@@ -58,9 +39,7 @@ beforeEach(() => {
     configurable: true,
     value: { ready: Promise.resolve() },
   });
-  observerCallback = undefined;
-  disconnect.mockClear();
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  observers = stubIntersectionObserver();
   // a narrow screen: the cycle starts without the wide-screen stagger
   stubMatchMedia(() => true);
   setReducedMotion(false);
@@ -109,7 +88,7 @@ describe("PrivacyBubble", () => {
     render(<PrivacyBubble label={label} words={words} />);
     const picture = screen.getByRole("img");
 
-    expect(observerCallback).toBeUndefined();
+    expect(observers).toHaveLength(0);
     act(() => {
       vi.advanceTimersByTime(20_000);
     });
@@ -122,7 +101,7 @@ describe("PrivacyBubble", () => {
     vi.useFakeTimers();
     const { unmount } = render(<PrivacyBubble label={label} words={words} />);
     const picture = screen.getByRole("img");
-    showBubble();
+    intersect(true);
 
     act(() => {
       vi.advanceTimersByTime(900 + 2400);
@@ -143,7 +122,7 @@ describe("PrivacyBubble", () => {
     expect(currentWord(picture)).toBe("Issuance");
 
     unmount();
-    expect(disconnect).toHaveBeenCalled();
+    for (const observer of observers) expect(observer.disconnect).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
