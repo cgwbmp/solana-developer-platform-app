@@ -259,12 +259,9 @@ async function judgeAdvisory(
   //    read instead, and the advisory waits for the next sweep.
   let balance: Awaited<ReturnType<typeof readOwnerMintBalance>>;
   try {
-    balance = await readOwnerMintBalance(
-      advisory.environment,
-      advisory.owner_address,
-      advisory.deposit_token_mint,
-      { minContextSlot: height.absoluteSlot }
-    );
+    balance = await readOwnerMintBalance(advisory.owner_address, advisory.deposit_token_mint, {
+      minContextSlot: height.absoluteSlot,
+    });
   } catch (error) {
     stats.balanceReadFailures += 1;
     logEvent("error", {

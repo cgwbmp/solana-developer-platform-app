@@ -406,7 +406,6 @@ async function prepareCustodyTransaction(
     shareMint: input.position.shareMint,
   };
   const simulation = await simulateVaultPlan({
-    cluster,
     deadline,
     expectedAssetIdentity,
     plan: input.plan,
@@ -432,7 +431,6 @@ async function prepareCustodyTransaction(
     throw badRequest("Resolved signing wallet does not match the queued withdrawal position");
   }
   const signed = await signVaultPlan({
-    cluster,
     deadline,
     expectedAssetIdentity,
     plan: input.plan,
@@ -448,10 +446,8 @@ async function broadcastQueuedAction(
   result: QueuedWithdrawalMutationResult
 ): Promise<QueuedWithdrawalMutationResult> {
   if (result.replayed) return result;
-  const cluster = earnClusterFor(result.request.environment);
   try {
     await broadcastVaultTransaction({
-      cluster,
       deadline: createVaultDeadline(),
       bytes: Uint8Array.from(Buffer.from(result.action.signed_transaction, "base64")),
     });
@@ -544,14 +540,12 @@ export async function createCustodyQueuedWithdrawal(
   try {
     // Reuse the already resolved sponsorship identity in signing. Resolving it
     // twice could put a different payer in the message than in the plan.
-    const cluster = earnClusterFor(input.actor.environment);
     const executionDeadline = createVaultDeadline();
     const expectedAssetIdentity = {
       depositTokenMint: input.position.tokenMint,
       shareMint: input.position.shareMint,
     };
     const simulation = await simulateVaultPlan({
-      cluster,
       deadline: executionDeadline,
       expectedAssetIdentity,
       plan,
@@ -577,7 +571,6 @@ export async function createCustodyQueuedWithdrawal(
       throw badRequest("Resolved signing wallet does not match the queued withdrawal position");
     }
     const signed = await signVaultPlan({
-      cluster,
       deadline: executionDeadline,
       expectedAssetIdentity,
       plan,
@@ -799,7 +792,6 @@ async function compileExternalPlan(input: {
   plan: EarnVaultTransactionPlan;
   feePayer?: string;
 }) {
-  const cluster = earnClusterFor(input.actor.environment);
   const deadline = createVaultDeadline();
   const fee: VaultFeeMode = input.feePayer
     ? { kind: "caller-provided", feePayer: address(input.feePayer) }
@@ -809,7 +801,6 @@ async function compileExternalPlan(input: {
     shareMint: input.position.shareMint,
   };
   const simulation = await simulateVaultPlan({
-    cluster,
     deadline,
     expectedAssetIdentity,
     plan: input.plan,
@@ -822,7 +813,6 @@ async function compileExternalPlan(input: {
       rawSimulationDetails(simulation.raw)
     );
   return compileUnsignedVaultTransaction({
-    cluster,
     deadline,
     expectedAssetIdentity,
     plan: input.plan,
@@ -883,9 +873,7 @@ export async function buildExternalQueuedWithdrawalRequest(
     unsigned_transaction: Buffer.from(unsigned.bytes).toString("base64"),
     last_valid_block_height: unsigned.lastValidBlockHeight,
   };
-  const currentBlockHeight = await readConfirmedBlockHeight(
-    earnClusterFor(input.actor.environment)
-  );
+  const currentBlockHeight = await readConfirmedBlockHeight();
   return createPostgresEarnVaultWithdrawalRequestsRepository(
     getDb(env)
   ).createExternalWalletTransaction({

@@ -237,7 +237,7 @@ describe("detectOrphanedEarnSplitSwaps", () => {
     expect(tick().level).toBe("info");
     expect(tick().payload).toMatchObject({ checked: 1, orphaned: 1, open_backlog: 1 });
     // The balance read must come from a node at least as current as the height read.
-    expect(readOwnerMintBalance).toHaveBeenCalledWith("sandbox", OWNER, USDC, {
+    expect(readOwnerMintBalance).toHaveBeenCalledWith(OWNER, USDC, {
       minContextSlot: HEIGHT_SLOT,
     });
     // Stays open, stamped, and reported again on the next visit.
