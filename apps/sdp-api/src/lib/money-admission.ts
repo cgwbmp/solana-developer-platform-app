@@ -107,7 +107,7 @@ export type MoneyPrincipalFacts =
       kind: "mandate";
       mandate: { status: string; sourceCustodyWalletId: string | null } | null;
     }
-  | { kind: "payment_request"; request: { status: string } | null };
+  | { kind: "payment_request"; request: { status: string; expiresAt: string | null } | null };
 
 export interface MoneyAdmissionFacts {
   /** The raw `organizations.status` column. */
@@ -370,7 +370,10 @@ export function decidePrincipal(
       const request = principal.request;
       if (
         !request ||
-        !mayActInStatus(PAYMENT_REQUEST_MOVEMENT_STATUSES, movement, actions, request.status)
+        !mayActInStatus(PAYMENT_REQUEST_MOVEMENT_STATUSES, movement, actions, request.status) ||
+        (actions !== null &&
+          request.expiresAt !== null &&
+          Date.parse(request.expiresAt) <= facts.readAt)
       ) {
         return refuse("principal_not_live");
       }
@@ -541,6 +544,7 @@ interface MoneyAdmissionRow {
   mandate_status: string | null;
   mandate_wallet_id: string | null;
   request_status: string | null;
+  request_expires_at: string | null;
 }
 
 function principalIdOf(principal: MoneyPrincipal | null, kind: MoneyPrincipalKind): string | null {
@@ -609,7 +613,10 @@ function principalFacts(
     case "payment_request":
       return {
         kind: "payment_request",
-        request: row.request_status === null ? null : { status: row.request_status },
+        request:
+          row.request_status === null
+            ? null
+            : { status: row.request_status, expiresAt: row.request_expires_at },
       };
     default: {
       const exhaustive: never = principal;
@@ -678,7 +685,7 @@ export async function readMoneyAdmissionFactsWith(
               om.status AS member_status, om.role AS member_role,
               pm.id IS NOT NULL AS member_in_project,
               rp.status AS mandate_status, rp.source_custody_wallet_id AS mandate_wallet_id,
-              pr.status AS request_status
+              pr.status AS request_status, pr.expires_at AS request_expires_at
          FROM projects p
          JOIN organizations o ON o.id = p.organization_id
          LEFT JOIN api_keys ak
