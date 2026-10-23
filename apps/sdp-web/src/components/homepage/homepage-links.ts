@@ -13,6 +13,8 @@ export const SECTION_LINKS = {
   issuance: "/dashboard/issuance",
   payments: "/dashboard/payments/pay",
   markets: "/dashboard/markets",
+  // TODO: no page, redirect or rewrite serves /policies yet, so this link ends on a missing page
+  // after sign-in. Point it at the policy documentation or create the page.
   policies: "/policies",
 } as const;
 
