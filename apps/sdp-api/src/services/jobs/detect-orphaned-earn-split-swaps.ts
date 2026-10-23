@@ -1,7 +1,7 @@
-import { resolveClusterRpcUrl } from "@sdp/rpc/config";
-import { createRpc } from "@sdp/rpc/solana";
+import { getChainHeight } from "@sdp/rpc/solana";
 import { parseDecimalAmount } from "@sdp/solana/amount";
 import type { SdpEnvironment } from "@sdp/types/api-keys";
+import type { Slot } from "@solana/kit";
 import { getDb } from "@/db/client";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
 import { createPostgresEarnMovementsRepository } from "@/db/repositories/earn-movements.repository";
@@ -10,7 +10,8 @@ import {
   type EarnSplitSwapAdvisoryRow,
 } from "@/db/repositories/earn-split-swap-advisories.repository";
 import { describeError, logEvent } from "@/runtime/money-path-events";
-import { assertClusterEndpoint, earnClusterFor } from "@/services/earn/execution-registry";
+import { earnClusterRpc } from "@/services/earn/cluster-rpc";
+import { earnClusterFor } from "@/services/earn/execution-registry";
 import { readOwnerMintBalance } from "@/services/earn/owner-token-balance";
 import type { Env } from "@/types/env";
 
@@ -85,6 +86,12 @@ const ESCALATE_AFTER_MS = 60 * 60_000;
 const OBSERVED_STATUSES = new Set(["confirmed", "finalized"]);
 const IN_FLIGHT_STATUSES = new Set(["requested", "submitted"]);
 
+/** A confirmed block height and the slot of the bank that reported it. */
+interface ChainHeight {
+  blockHeight: bigint;
+  absoluteSlot: Slot;
+}
+
 export interface EarnSplitSwapDetectionStats {
   checked: number;
   depositObserved: number;
@@ -131,14 +138,10 @@ export async function detectOrphanedEarnSplitSwaps(
   }
 
   for (const [environment, rows] of byEnvironment) {
-    let blockHeight: bigint | null = null;
+    // Height and slot from one bank: the balance read must reach that slot (see judgeAdvisory).
+    let height: ChainHeight | null = null;
     try {
-      const cluster = earnClusterFor(environment);
-      const rpcUrl = resolveClusterRpcUrl(env, cluster);
-      await assertClusterEndpoint(env, cluster, rpcUrl);
-      blockHeight = await createRpc(env, { rpcUrl })
-        .getBlockHeight({ commitment: "confirmed" })
-        .send();
+      height = await getChainHeight(earnClusterRpc(earnClusterFor(environment)), "confirmed");
     } catch (error) {
       logEvent("error", {
         event: "sdp_api_earn_split_swap_block_height_read_failed",
@@ -153,7 +156,7 @@ export async function detectOrphanedEarnSplitSwaps(
     for (const advisory of rows) {
       // Sequential on purpose: one filtered RPC read per judged advisory.
       // react-doctor-disable-next-line react-doctor/async-await-in-loop -- pacing is intentional.
-      await judgeAdvisory(env, advisories, ledger, advisory, blockHeight, now(), stats);
+      await judgeAdvisory(advisories, ledger, advisory, height, now(), stats);
     }
   }
 
@@ -185,11 +188,10 @@ export async function detectOrphanedEarnSplitSwaps(
 }
 
 async function judgeAdvisory(
-  env: Env,
   advisories: ReturnType<typeof createPostgresEarnSplitSwapAdvisoriesRepository>,
   ledger: ReturnType<typeof createPostgresEarnMovementsRepository>,
   advisory: EarnSplitSwapAdvisoryRow,
-  blockHeight: bigint | null,
+  height: ChainHeight | null,
   nowMs: number,
   stats: EarnSplitSwapDetectionStats
 ): Promise<void> {
@@ -231,8 +233,8 @@ async function judgeAdvisory(
   // 2. Too early to judge: the swap can still land, or the grace has not run.
   const ageMs = nowMs - Date.parse(advisory.created_at);
   if (
-    blockHeight === null ||
-    blockHeight <= BigInt(advisory.swap_last_valid_block_height) ||
+    height === null ||
+    height.blockHeight <= BigInt(advisory.swap_last_valid_block_height) ||
     ageMs < GRACE_MS
   ) {
     stats.pending += 1;
@@ -251,14 +253,18 @@ async function judgeAdvisory(
   );
   if (await resolveWithMovement(advisories, advisory, exactFollowUps, null, stats)) return;
 
-  // 4. The balance is the ground truth: judge it against the build-time baseline.
+  // 4. The balance is the ground truth: judge it against the build-time baseline,
+  //    read from a node at least as current as the height that proved the swap's
+  //    window closed. A lagging pool endpoint would predate a landed swap and turn
+  //    an orphan into a permanent `unfunded`; a node behind the floor fails the
+  //    read instead, and the advisory waits for the next sweep.
   let balance: Awaited<ReturnType<typeof readOwnerMintBalance>>;
   try {
     balance = await readOwnerMintBalance(
-      env,
       advisory.environment,
       advisory.owner_address,
-      advisory.deposit_token_mint
+      advisory.deposit_token_mint,
+      { minContextSlot: height.absoluteSlot }
     );
   } catch (error) {
     stats.balanceReadFailures += 1;
