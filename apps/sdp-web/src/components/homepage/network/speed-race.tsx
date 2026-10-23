@@ -74,9 +74,15 @@ function settlement(n: number): Settlement {
  * is visible and its block has arrived; under reduced motion it is one still frame.
  */
 export function SpeedRace() {
+  const reducedMotion = useReducedMotion() ?? false;
+  /* keyed on the motion preference, so a change remounts the race with an empty list and a fresh
+     count instead of resetting them in the effect */
+  return <Race key={reducedMotion ? "still" : "race"} reducedMotion={reducedMotion} />;
+}
+
+function Race({ reducedMotion }: { reducedMotion: boolean }) {
   const t = useTranslations();
   const locale = useLocale();
-  const reducedMotion = useReducedMotion();
   const arrived = useRiseArrived() ?? true;
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -134,6 +140,8 @@ export function SpeedRace() {
     if (reducedMotion) {
       measure();
       drawStill(ctx, geometry);
+      /* seeded here, not during render: the preference is null on the server and already known on
+         the client's first render, so render-time rows would not hydrate */
       setRows([settlement(3), settlement(2), settlement(1)]);
       const redraw = () => {
         if (measure()) drawStill(ctx, geometry);
@@ -144,8 +152,6 @@ export function SpeedRace() {
     }
 
     const state = createRaceState();
-    count = 0;
-    setRows([]);
     let inView = false;
     let frame = 0;
     let last = 0;
