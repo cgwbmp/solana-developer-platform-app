@@ -22,7 +22,7 @@ export type FigurePlayer = {
 };
 
 type Counter = {
-  el: Element;
+  el: SVGElement;
   n: number;
   n0: number;
   step: number;
@@ -33,11 +33,7 @@ type Counter = {
   unit: string;
 };
 
-type Sequence = { el: Element; list: string[]; i: number; inc: number; at: number | null };
-
-function dataOf(el: Element): DOMStringMap {
-  return el instanceof HTMLElement || el instanceof SVGElement ? el.dataset : {};
-}
+type Sequence = { el: SVGElement; list: string[]; i: number; inc: number; at: number | null };
 
 export function createFigurePlayer(
   svg: SVGSVGElement,
@@ -60,8 +56,8 @@ export function createFigurePlayer(
 
   /* a counter moves by data-step at each of data-at, rolling over data-dur ms when it has one;
      with data-max it goes back to where it started, at the reset, once it has gone past it */
-  const counters: Counter[] = [...svg.querySelectorAll("[data-at]")].map((el) => {
-    const d = dataOf(el);
+  const counters: Counter[] = [...svg.querySelectorAll<SVGElement>("[data-at]")].map((el) => {
+    const d = el.dataset;
     const n = Number(d.n);
     return {
       el,
@@ -105,8 +101,8 @@ export function createFigurePlayer(
     roll(frame);
   };
 
-  const sequences: Sequence[] = [...svg.querySelectorAll("[data-seq]")].map((el) => {
-    const d = dataOf(el);
+  const sequences: Sequence[] = [...svg.querySelectorAll<SVGElement>("[data-seq]")].map((el) => {
+    const d = el.dataset;
     return {
       el,
       list: (d.seq ?? "").split("|"),
