@@ -178,7 +178,10 @@ signature. Initiated movements keep their signature uniqueness. Caller keys
 still share the existing ledger constraint, so use distinct keys for direct
 and queued intents; ADR 0003 records the unresolved collision and rollout gate.
 
-The custody options/preview/create/list/detail/cancel routes are keyed. External
+The custody options/preview/create/list/detail/cancel routes are keyed. The
+custody cancel takes `earn.manage`, the action its movement
+(`earn.queued_withdraw_cancel`) needs at the custody signer, so a key without it
+is refused before sponsorship, a build and a simulation. External
 wallet options and previews use the optional-auth contract: anonymous calls are
 per-IP RPC-metered and persist nothing. External request/cancellation builds,
 submits, and request history are keyed so every share escrow has the durable
@@ -576,10 +579,15 @@ transaction signed by the organization custody wallet or external owner.
   `requireAction("earn.execute")` → `requestGate` → handler.
   The caller names a CATALOGUE row, never a raw vault address, so the sync's
   admission gates still bound this path.
-  - **`requestGate`.** `requestGate({ extract: extractEarnVaultDeposit })`
-    resolves everything (strategy, wallet, amount) BEFORE
-    `createOrgSignerForCustodyWallet` is reached. The extractor owns all the
-    gates below; the handler only ledgers.
+  - **`requestGate`.** `extractEarnVaultDeposit` resolves identity only
+    (strategy, deposit style, swap, wallet and the key's scope over it, the
+    fingerprint), `findEarnVaultDepositIdempotentKeyReplay` answers a recorded
+    key next, and only then does `admitEarnVaultDeposit` run the money-in
+    state gates below (ADR 0009). A same-key retry of a recorded deposit is
+    therefore never refused by state that changed since (a paused strategy, a
+    flipped floor policy, lost entitlement, its own amount counted against
+    the cap). All of it runs BEFORE `createOrgSignerForCustodyWallet` is
+    reached; the handler only ledgers.
     Registered as the `earn` family in
     `src/security/value-moving-conformance.node.test.ts`, whose
     `valueMovingSourceRoots` now includes `src/services/earn` — it did not, which
@@ -625,9 +633,11 @@ transaction signed by the organization custody wallet or external owner.
     `buildEarnVaultDepositFingerprint`, and the replay is resolved BEFORE the
     position is claimed — reusing a key with a different intent is a **409**, not
     a silent replay, and writes nothing.
-  - Gate order: schema → strategy resolution → provider/environment capability
-    → provider-specific production floor → deposit-style check → surfacing → entitlement →
-    **catalogue admission** → **vault exposure cap** → wallet.
+  - Gate order: schema → strategy resolution → provider registration →
+    deposit-style check → swap normalization → wallet → wallet scope →
+    **replay** → provider-specific production floor → environment capability →
+    surfacing → entitlement → **catalogue admission** → **vault exposure cap**
+    → custody runtime execution.
     `assertStrategyDepositable` (`handlers/admission.ts`) is shared with the
     custodial path and asserts `status = 'active'` plus
     `isClusterFundableInEnvironment`; without it a `paused` row (an
@@ -1650,7 +1660,9 @@ fail-closed + 4xx-vs-ambiguous outcomes in `../earn.vault.test.ts`, fail-open
   `isEarnExitOrRead` (exits.ts) allows: every GET plus an explicit list of
   withdrawal POSTs. It is an allowlist, so a new route is refused until filed;
   `production-exits.test.ts` forces every state-changing route to be filed as
-  an exit or an entry.
+  an exit or an entry. `exits.ts` also files the starts (deposits,
+  cancellations), and `movement-actions.test.ts` fails any route filed with a
+  start whose declared action that start's `actions` do not admit (HOO-2099).
 - Route tests in `../earn-program.test.ts` encode the asymmetry: the money-in
   half (create and re-target both refused when the organization is not entitled
   or credentials are missing) and the money-out half (the "withdrawals (ADR 0002
