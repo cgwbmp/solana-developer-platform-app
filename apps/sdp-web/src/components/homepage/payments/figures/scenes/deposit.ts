@@ -3,6 +3,7 @@
    top with the deposit received.
    Motion: the card is tapped, the coin climbs the ramp onto the wallet and is taken in, the
    balance runs up by 500.00, the status pings, and the next coin settles back on the ramp. */
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import { INK, type Pt, rrect, T } from "@/components/homepage/payments/figures/geometry";
 import { attr, type Key, makeFig, SW } from "@/components/homepage/payments/figures/make-fig";
 import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
@@ -10,6 +11,7 @@ import type { SceneInput } from "@/components/homepage/payments/figures/scene-in
 export function depositScene({ fonts, label, copy }: SceneInput): string {
   const g = makeFig({ ox: 243, oy: 241, id: "dep", cycle: 1900, label, fonts });
   const w = copy.words;
+  const usdc = WELL_KNOWN_TOKENS.USDC.symbol;
   g.grid({ cx: 0, cy: 20 });
   const C = { x: 0, y: -186, w: 176, d: 128 };
   const Z = 56;
@@ -37,7 +39,7 @@ export function depositScene({ fonts, label, copy }: SceneInput): string {
   });
   /* the widest the balance gets, as zeros */
   const widest = copy.number(3000, 2).replace(/\d/g, "0");
-  g.text("USDC", C.x + 16 + g.measure(widest, { size: 25 }) + 6, C.y + 70, t, {
+  g.text(usdc, C.x + 16 + g.measure(widest, { size: 25 }) + 6, C.y + 70, t, {
     size: 10,
     fill: T.t5,
   });

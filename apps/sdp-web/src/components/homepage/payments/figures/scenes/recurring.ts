@@ -4,6 +4,7 @@
    itself: the coin hops, its green dot turns into a tick, a ping, and Next run moves on a month.
    Then the history steps back by one, so the picture is the one it started from, a month later;
    the dates move on as it is put back to rest, so it loops without a seam. */
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import { circ, INK, type Pt, T } from "@/components/homepage/payments/figures/geometry";
 import { makeFig } from "@/components/homepage/payments/figures/make-fig";
 import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
@@ -13,6 +14,7 @@ const AUG = 7;
 export function recurringScene({ fonts, label, copy }: SceneInput): string {
   const g = makeFig({ ox: 335, oy: 306, id: "rec", cycle: 2400, label, fonts });
   const w = copy.words;
+  const usdc = WELL_KNOWN_TOKENS.USDC.symbol;
   /* dates are data in the drawing, set in the reader's locale */
   const MONTHS = Array.from({ length: 12 }, (_, m) => copy.monthStart(m));
   g.grid({ cx: 0, cy: 0 });
@@ -149,7 +151,7 @@ export function recurringScene({ fonts, label, copy }: SceneInput): string {
   const t = g.panel(S.x, S.y, 0, S.w, S.d, { heading: w.schedule });
   const scheduled = copy.number(1200, 2);
   g.amount(scheduled, S.x + 16, S.y + 64, t, { size: 28 });
-  g.text("USDC", S.x + 16 + g.measure(scheduled, { size: 28 }) + 7, S.y + 64, t, {
+  g.text(usdc, S.x + 16 + g.measure(scheduled, { size: 28 }) + 7, S.y + 64, t, {
     size: 10,
     fill: T.t5,
   });

@@ -5,6 +5,8 @@
    policy puck (its tick turns green with the arrival's dot), its shadow running on the floor
    below, and settles into Jane's wallet, which gives under it. The next time round the same chip
    goes to the bank instead and turns from USDC into USD over the puck: the off-ramp. */
+
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import { cubicPath, INK, type Pt, rrect, T } from "@/components/homepage/payments/figures/geometry";
 import { type Frame, type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
 import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
@@ -20,6 +22,7 @@ type Route = {
 export function payScene({ fonts, label, copy }: SceneInput): string {
   const g = makeFig({ ox: 300, oy: 214, id: "pay", cycle: 2000, variants: 2, label, fonts });
   const w = copy.words;
+  const usdc = WELL_KNOWN_TOKENS.USDC.symbol;
   g.grid({ cx: 0, cy: 40 });
   const GAP = 24;
   const PAD = 16;
@@ -120,7 +123,7 @@ export function payScene({ fonts, label, copy }: SceneInput): string {
   let t = g.panel(A.x, A.y, 0, A.w, A.d, { heading: w.opsWallet });
   const balance = copy.number(12480, 0);
   g.amount(balance, A.x + PAD, A.y + 58, t, { size: 19 });
-  g.text("USDC", A.x + PAD + g.measure(balance, { size: 19 }) + 5, A.y + 58, t, {
+  g.text(usdc, A.x + PAD + g.measure(balance, { size: 19 }) + 5, A.y + 58, t, {
     size: 10,
     fill: T.t5,
   });
@@ -130,7 +133,7 @@ export function payScene({ fonts, label, copy }: SceneInput): string {
   g.sans("Jane Smith", B.x + PAD, B.y + 56, t, { size: 14 });
   const payAmount = copy.number(250, 2);
   g.amount(payAmount, B.x + PAD, B.y + 102, t, { size: 34 });
-  g.text("USDC", B.x + PAD + g.measure(payAmount, { size: 34 }) + 7, B.y + 102, t, {
+  g.text(usdc, B.x + PAD + g.measure(payAmount, { size: 34 }) + 7, B.y + 102, t, {
     size: 10.5,
     fill: T.t5,
   });
@@ -266,7 +269,7 @@ export function payScene({ fonts, label, copy }: SceneInput): string {
   g.keys("usdc", turn(1, 0), {}, "center", { when: ".v1", cls: "usdc" });
   g.keys("usd", turn(0, 1), { o: 0 }, "center", { when: ".v1", cls: "usd" });
   g.raw('<g class="pay-usdc">');
-  g.text("USDC", ux, uy, ct, { size: 10, fill: T.t5 });
+  g.text(usdc, ux, uy, ct, { size: 10, fill: T.t5 });
   g.raw("</g>");
   g.raw('<g class="pay-usd" opacity="0">');
   g.text("USD", ux, uy, ct, { size: 10, fill: T.t5 });

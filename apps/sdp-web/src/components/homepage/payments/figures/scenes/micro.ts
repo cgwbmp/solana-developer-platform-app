@@ -4,6 +4,7 @@
    the wire, the wallet's balance goes down a thousandth as it leaves, and as it arrives the price
    lights green while the calls paid go up by one. */
 
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import { INK, T } from "@/components/homepage/payments/figures/geometry";
 import { attr, type Key, makeFig } from "@/components/homepage/payments/figures/make-fig";
 import type { SceneInput } from "@/components/homepage/payments/figures/scene-input";
@@ -13,6 +14,7 @@ export function microScene({ fonts, label, copy }: SceneInput): string {
   const RUN = 380;
   const g = makeFig({ ox: 318, oy: 258, id: "mic", cycle: 3000, label, fonts });
   const w = copy.words;
+  const usdc = WELL_KNOWN_TOKENS.USDC.symbol;
   g.grid({ cx: 0, cy: 0 });
   const PAD = 16;
   const GREEN = "#0E9F65";
@@ -50,7 +52,7 @@ export function microScene({ fonts, label, copy }: SceneInput): string {
     size: 19,
     attrs: `${TAB} data-n="4.2" data-step="-0.001" data-dec="3" data-at="${leave}"`,
   });
-  g.text("USDC", A.x + PAD + g.measure(copy.number(0, 3), { size: 19 }) + 6, A.y + 58, t, {
+  g.text(usdc, A.x + PAD + g.measure(copy.number(0, 3), { size: 19 }) + 6, A.y + 58, t, {
     size: 10,
     fill: T.t5,
   });

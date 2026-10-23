@@ -1,5 +1,6 @@
 "use client";
 
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
@@ -21,6 +22,8 @@ import {
 } from "./speed-canvas";
 
 const LANE_KEYS = ["solana", "cards", "ach", "swift"] as const;
+const USDC = WELL_KNOWN_TOKENS.USDC.symbol;
+const EURC = WELL_KNOWN_TOKENS.EURC.symbol;
 
 /* Illustrative settlements written into the list as Solana payments land (airport codes, amounts). */
 const ROUTES = [
@@ -34,14 +37,14 @@ const ROUTES = [
   ["syd", "sin"],
 ] as const;
 const AMOUNTS = [
-  [12_500, "USDC"],
-  [840, "USDC"],
-  [1_020_000, "USDC"],
-  [96.4, "USDC"],
-  [25_000, "USDC"],
-  [3_300, "EURC"],
-  [410, "USDC"],
-  [78_000, "USDC"],
+  [12_500, USDC],
+  [840, USDC],
+  [1_020_000, USDC],
+  [96.4, USDC],
+  [25_000, USDC],
+  [3_300, EURC],
+  [410, USDC],
+  [78_000, USDC],
 ] as const;
 const MAX_ROWS = LANE_KEYS.length - 1;
 

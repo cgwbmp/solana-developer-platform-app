@@ -2,6 +2,8 @@
  * The payments the globe shows: the cities they leave and land in, and the amounts the tags
  * carry. City names are proper nouns and amounts are figures, so they are data, not copy.
  */
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
+
 export type City = { lat: number; lon: number; name: string };
 
 export const CITIES = {
@@ -31,15 +33,18 @@ export function isCityKey(key: string): key is CityKey {
 
 export type Amount = { figure: string; currency: string };
 
+const USDC = WELL_KNOWN_TOKENS.USDC.symbol;
+const EURC = WELL_KNOWN_TOKENS.EURC.symbol;
+
 export const AMOUNTS: readonly Amount[] = [
-  { figure: "12,500.00", currency: "USDC" },
-  { figure: "840.00", currency: "USDC" },
-  { figure: "1,020,000.00", currency: "USDC" },
-  { figure: "96.40", currency: "USDC" },
-  { figure: "25,000.00", currency: "USDC" },
-  { figure: "3,300.00", currency: "EURC" },
-  { figure: "410.00", currency: "USDC" },
-  { figure: "78,000.00", currency: "USDC" },
+  { figure: "12,500.00", currency: USDC },
+  { figure: "840.00", currency: USDC },
+  { figure: "1,020,000.00", currency: USDC },
+  { figure: "96.40", currency: USDC },
+  { figure: "25,000.00", currency: USDC },
+  { figure: "3,300.00", currency: EURC },
+  { figure: "410.00", currency: USDC },
+  { figure: "78,000.00", currency: USDC },
 ];
 
 /** The words the tags say, from the page's catalog. */

@@ -6,6 +6,7 @@
    it; then the track runs from Processed through Confirmed to Finalized, Finalized in green with
    a ping. The next time round the link is used instead: a click on its copy icon, and only then
    does the payment come out of the pill. */
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 import {
   circ,
   cubicPath,
@@ -53,6 +54,7 @@ type Route = { when: string; start: Pt; frames: [number, Frame][]; shadow: Key[]
 export function requestScene({ fonts, label, copy }: SceneInput): string {
   const g = makeFig({ ox: 322, oy: 274, id: "req", cycle: 2700, variants: 2, label, fonts });
   const w = copy.words;
+  const usdc = WELL_KNOWN_TOKENS.USDC.symbol;
   g.grid({ cx: 0, cy: 0 });
   const PAD = 16;
   const GAP = 24;
@@ -151,7 +153,7 @@ export function requestScene({ fonts, label, copy }: SceneInput): string {
       const t = g.panel(R.x, R.y, 0, R.w, R.d, { heading: w.paymentRequest });
       const requested = copy.number(120, 2);
       g.amount(requested, R.x + PAD, R.y + 70, t, { size: 32 });
-      g.text("USDC", R.x + PAD + g.measure(requested, { size: 32 }) + 7, R.y + 70, t, {
+      g.text(usdc, R.x + PAD + g.measure(requested, { size: 32 }) + 7, R.y + 70, t, {
         size: 10.5,
         fill: T.t5,
       });
@@ -302,7 +304,7 @@ export function requestScene({ fonts, label, copy }: SceneInput): string {
   const amt = copy.number(120, 2);
   const uy = end[1] + 4.2;
   g.sans(amt, cx + 12, uy, ct, { size: 12 });
-  g.text("USDC", cx + 12 + g.measure(amt, { size: 12 }) + 5, uy, ct, { size: 10, fill: T.t5 });
+  g.text(usdc, cx + 12 + g.measure(amt, { size: 12 }) + 5, uy, ct, { size: 10, fill: T.t5 });
   g.raw("</g>");
   return g.svg();
 }

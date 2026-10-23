@@ -1,4 +1,5 @@
 import { DEFAULT_SDP_API_URL } from "@sdp/types/site";
+import { WELL_KNOWN_TOKENS } from "@sdp/types/well-known-tokens";
 
 /**
  * The three calls the Interfaces section shows, one per way of working. They are real requests
@@ -31,6 +32,7 @@ const AUTH = '-H "Authorization: Bearer sk_test_…"';
 const JSON_TYPE = '-H "Content-Type: application/json"';
 /** A transfer moves money, so the API refuses one without a key (IDEMPOTENCY_REQUIRED_ROUTES). */
 const IDEMPOTENCY = '-H "Idempotency-Key: payment-invoice-1234"';
+const USDC = WELL_KNOWN_TOKENS.USDC.symbol;
 
 const key = (text: string): CodeToken => ({ kind: "key", text: `"${text}"` });
 const value = (text: string): CodeToken => ({ kind: "value", text: `"${text}"` });
@@ -45,7 +47,7 @@ export const INTERFACE_SNIPPETS: readonly InterfaceSnippet[] = [
       [`    ${AUTH} \\`],
       [`    ${IDEMPOTENCY} \\`],
       [`    ${JSON_TYPE} \\`],
-      [`    -d '{"sourceCustodyWalletId":"cwlt_…","token":"USDC",`],
+      [`    -d '{"sourceCustodyWalletId":"cwlt_…","token":"${USDC}",`],
       [`         "amount":"24800.00","destination":"7xKX…gAsU"}'`],
     ],
     narrowRequest: [
@@ -57,7 +59,7 @@ export const INTERFACE_SNIPPETS: readonly InterfaceSnippet[] = [
       ["  -d '{"],
       ["    ", key("sourceCustodyWalletId"), ': "cwlt_…",'],
       ["    ", key("destination"), ': "7xKX…gAsU",'],
-      ["    ", key("token"), ': "USDC",'],
+      ["    ", key("token"), `: "${USDC}",`],
       ["    ", key("amount"), ': "24800.00"'],
       ["  }'"],
     ],
@@ -124,7 +126,7 @@ export const INTERFACE_SNIPPETS: readonly InterfaceSnippet[] = [
       ["  ", key("data"), ": [{"],
       ["    ", key("id"), ': "xfr_71c",'],
       ["    ", key("status"), ": ", value("pending"), ","],
-      ["    ", key("token"), ': "USDC",'],
+      ["    ", key("token"), `: "${USDC}",`],
       ["    ", key("amount"), ': "24800.00"'],
       ["  }],"],
       ["  ", key("meta"), ": { ", key("total"), ": 1, ", key("hasMore"), ": false }"],
