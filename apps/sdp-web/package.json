@@ -11,6 +11,8 @@
     "check:i18n": "node scripts/audit-ui-copy.mjs",
     "check:i18n:baseline": "node scripts/audit-ui-copy.mjs --write",
     "check:i18n:strict": "node scripts/audit-ui-copy.mjs --strict",
+    "check:globe-land": "node scripts/generate-globe-land.mjs --check",
+    "generate:globe-land": "node scripts/generate-globe-land.mjs",
     "test:e2e": "playwright test --config=playwright.config.ts --project=public --project=dashboard --project=issuance",
     "test:e2e:dashboard": "playwright test --config=playwright.config.ts --project=public --project=dashboard",
     "test:e2e:dashboard-transactions": "playwright test --config=playwright.config.ts --project=dashboard-transactions",
@@ -72,7 +74,9 @@
     "jsdom": "30.1.1",
     "pg": "8.23.0",
     "tailwindcss": "4.3.3",
+    "topojson-client": "3.1.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "world-atlas": "2.0.2"
   }
 }

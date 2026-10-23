@@ -8,14 +8,12 @@ import { LAND } from "./land-data";
 
 const DEG = THREE.MathUtils.DEG2RAD;
 
-/** Tolerance and corner radius in degrees, the angle grid in degrees, line radius in scene units,
- * islands below this many square degrees left out, ink the strength of the grey. */
+/** The angle grid and corner radius in degrees, line radius in scene units, ink the strength of
+ * the grey. The simplification and the island threshold are baked into land-data.ts. */
 export const GLOBE_DRAWING = {
-  tol: 0.55,
   snap: 15,
   corner: 1.5,
   width: 0.0032,
-  islands: 2,
   ink: 1.2,
 } as const;
 
@@ -30,40 +28,6 @@ export function latLon(lat: number, lon: number, r: number) {
     r * Math.cos(phi),
     r * Math.sin(phi) * Math.sin(theta)
   );
-}
-
-function segmentDistance(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) {
-  const ab = b.clone().sub(a);
-  const lengthSq = ab.lengthSq();
-  if (lengthSq < 1e-12) return p.distanceTo(a);
-  const t = THREE.MathUtils.clamp(p.clone().sub(a).dot(ab) / lengthSq, 0, 1);
-  return p.distanceTo(a.clone().addScaledVector(ab, t));
-}
-
-/** Douglas-Peucker. */
-function simplify(points: THREE.Vector3[], tolerance: number) {
-  if (points.length < 3) return points.slice();
-  const keep = new Uint8Array(points.length);
-  keep[0] = 1;
-  keep[points.length - 1] = 1;
-  const stack: [number, number][] = [[0, points.length - 1]];
-  for (let span = stack.pop(); span; span = stack.pop()) {
-    const [i, j] = span;
-    let far = -1;
-    let farDistance = tolerance;
-    for (let k = i + 1; k < j; k++) {
-      const d = segmentDistance(points[k], points[i], points[j]);
-      if (d > farDistance) {
-        farDistance = d;
-        far = k;
-      }
-    }
-    if (far > 0) {
-      keep[far] = 1;
-      stack.push([i, far], [far, j]);
-    }
-  }
-  return points.filter((_, k) => keep[k]);
 }
 
 /* Directions are taken in the tangent plane, east along the parallel, so a run on the grid's 0
@@ -149,67 +113,21 @@ function fillet(points: THREE.Vector3[], closed: boolean, radius: number) {
   return out;
 }
 
-type Ring = (typeof LAND)[number];
-type RingPoint = Ring[number];
-
-function ringBounds(ring: Ring) {
-  let minLat = 90;
-  let maxLat = -90;
-  let minLon = 180;
-  let maxLon = -180;
-  for (const [lon, lat] of ring) {
-    minLat = Math.min(minLat, lat);
-    maxLat = Math.max(maxLat, lat);
-    minLon = Math.min(minLon, lon);
-    maxLon = Math.max(maxLon, lon);
-  }
-  return { minLat, maxLat, minLon, maxLon };
-}
-
-/* the cut along the 180th meridian is removed, so it never draws as a seam */
-function splitAtAntimeridian(ring: Ring) {
-  const pieces: RingPoint[][] = [];
-  let piece = [ring[0]];
-  for (let i = 1; i < ring.length; i++) {
-    const a = ring[i - 1];
-    const b = ring[i];
-    if (Math.abs(a[0]) > 179.5 && Math.abs(b[0]) > 179.5) {
-      if (piece.length > 1) pieces.push(piece);
-      piece = [b];
-    } else piece.push(b);
-  }
-  if (piece.length > 1) pieces.push(piece);
-  return pieces;
-}
-
-/* Every ring as polylines on the unit sphere: Antarctica left out, specks below the island
-   threshold left out. */
+/* Every coast as a polyline on the unit sphere, snapped and rounded. */
 function coasts(drawing: Drawing) {
   const lines: THREE.Vector3[][] = [];
-  for (const ring of LAND) {
-    const { minLat, maxLat, minLon, maxLon } = ringBounds(ring);
-    if (minLat < -60) continue;
-    const midCos = Math.cos(((minLat + maxLat) / 2) * DEG);
-    if ((maxLon - minLon) * midCos * (maxLat - minLat) < drawing.islands) continue;
-
-    const pieces = splitAtAntimeridian(ring);
-    const closed = pieces.length === 1;
-    /* a small island keeps its shape: its tolerance is never more than an eighth of the island,
-       so it stays an island rather than a sliver */
-    const tolerance = Math.min(
-      drawing.tol,
-      0.12 * Math.hypot((maxLon - minLon) * midCos, maxLat - minLat)
+  for (const { closed, points: coast } of LAND) {
+    const points = fillet(
+      snapToGrid(
+        coast.map(([lon, lat]) => latLon(lat, lon, 1).normalize()),
+        closed,
+        drawing.snap * DEG
+      ),
+      closed,
+      drawing.corner * DEG
     );
-    for (const part of pieces) {
-      let points = part.map(([lon, lat]) => latLon(lat, lon, 1).normalize());
-      if (closed) points.pop();
-      points = simplify(closed ? points.concat([points[0]]) : points, tolerance * DEG);
-      if (closed) points.pop();
-      if (points.length < (closed ? 4 : 2)) continue;
-      points = fillet(snapToGrid(points, closed, drawing.snap * DEG), closed, drawing.corner * DEG);
-      if (closed) points.push(points[0].clone());
-      lines.push(points);
-    }
+    if (closed) points.push(points[0].clone());
+    lines.push(points);
   }
   return lines;
 }

@@ -66,15 +66,13 @@ export function drawStaticGlobe(canvas: HTMLCanvasElement) {
   context.lineWidth = 1.4;
   context.lineJoin = "round";
   context.strokeStyle = "#CFCDCC";
-  for (const ring of LAND) {
-    let previous: Projected | null = null;
-    for (const [lon, lat] of ring) {
-      if (lat < -60) {
-        previous = null;
-        continue;
-      }
+  for (const { closed, points } of LAND) {
+    /* a closed coast starts from its last point, so the segment that closes it is drawn too */
+    const [lastLon, lastLat] = points[points.length - 1];
+    let previous: Projected | null = closed ? project(lastLon, lastLat, view) : null;
+    for (const [lon, lat] of points) {
       const point = project(lon, lat, view);
-      if (previous && Math.abs(lon) < 179.5) {
+      if (previous) {
         const facing = Math.min(previous.facing, point.facing);
         if (facing > 0) {
           context.globalAlpha = Math.min(1, facing / 0.42);
