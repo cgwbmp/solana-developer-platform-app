@@ -1,9 +1,11 @@
+import { runInClusterScope } from "@sdp/rpc/scope";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   EarnVaultWithdrawalRequestActionRow,
   EarnVaultWithdrawalRequestRow,
   EarnVaultWithdrawalRequestsRepository,
 } from "@/db/repositories/earn-vault-withdrawal-requests.repository";
+import { installClusterRpcResponder } from "@/test/helpers/cluster-rpc";
 import { env } from "@/test/helpers/env";
 import {
   assertClosingIdentity,
@@ -18,19 +20,13 @@ import {
 
 const provider = vi.hoisted(() => ({ client: null as Record<string, unknown> | null }));
 const parProvider = vi.hoisted(() => ({ client: null as Record<string, unknown> | null }));
-const sweepRpc = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 const broadcast = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("@/services/earn/vault-execution.service", () => ({
   broadcastVaultTransaction: broadcast,
 }));
 
-vi.mock("@/services/earn/cluster-rpc", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/services/earn/cluster-rpc")>()),
-  earnClusterRpc: () => sweepRpc.current,
-}));
 vi.mock("@/services/earn/execution-registry", () => ({
-  earnClusterFor: () => "devnet",
   resolveVaultQueuedWithdrawClient: () => provider.client,
   resolveVaultParRedemptionClient: () => parProvider.client,
 }));
@@ -153,12 +149,18 @@ const emptyRpc = {
   getSignaturesForAddress: vi.fn(),
 };
 
+/** Sweep work runs inside its environment's cluster scope, as the Worker opens it. */
+function inSandboxScope<T>(work: () => Promise<T>): Promise<T> {
+  return runInClusterScope({ projectId: null, environment: "sandbox" }, work);
+}
+
 describe("queued withdrawal reconciliation", () => {
+  const clusterRpc = installClusterRpcResponder();
+
   beforeEach(() => {
     vi.clearAllMocks();
     provider.client = null;
     parProvider.client = null;
-    sweepRpc.current = null;
   });
 
   it("backs pending provider reads off without adding delay past maturity", () => {
@@ -185,15 +187,17 @@ describe("queued withdrawal reconciliation", () => {
     });
 
     await expect(
-      visitOpenRequestsJustInTime({ claimOpenRequests }, 3, async (row) => {
-        events.push(`start:${row.id}`);
-        await Promise.resolve();
-        events.push(`finish:${row.id}`);
-      })
+      inSandboxScope(() =>
+        visitOpenRequestsJustInTime({ claimOpenRequests }, 3, async (row) => {
+          events.push(`start:${row.id}`);
+          await Promise.resolve();
+          events.push(`finish:${row.id}`);
+        })
+      )
     ).resolves.toBe(2);
 
     expect(claimOpenRequests).toHaveBeenCalledTimes(3);
-    expect(claimOpenRequests).toHaveBeenCalledWith(1);
+    expect(claimOpenRequests).toHaveBeenCalledWith({ environment: "sandbox", limit: 1 });
     expect(events).toEqual([
       "claim",
       "start:request-1",
@@ -399,12 +403,14 @@ describe("queued withdrawal reconciliation", () => {
     async (kind) => {
       const ledger = fakeLedger(request());
       await expect(
-        reconcileAction(
-          env,
-          ledger,
-          action({ action: kind, status: "submitted", last_valid_block_height: "10" }),
-          null,
-          { rpc: emptyRpc as never, currentHeight: 10n }
+        inSandboxScope(() =>
+          reconcileAction(
+            env,
+            ledger,
+            action({ action: kind, status: "submitted", last_valid_block_height: "10" }),
+            null,
+            { rpc: emptyRpc as never, currentHeight: 10n }
+          )
         )
       ).resolves.toBe("rebroadcast");
       expect(broadcast).toHaveBeenCalledWith(
@@ -696,9 +702,9 @@ describe("queued withdrawal reconciliation", () => {
     };
 
     const before = Date.now();
-    await expect(reconcileParRequest(env, ledger, parRequest({ status: "pending" }))).resolves.toBe(
-      "unchanged"
-    );
+    await expect(
+      inSandboxScope(() => reconcileParRequest(env, ledger, parRequest({ status: "pending" })))
+    ).resolves.toBe("unchanged");
     expect(ledger.advanceRequest).toHaveBeenCalledWith(
       expect.objectContaining({ toStatus: "pending", lastIndexError: null })
     );
@@ -708,6 +714,7 @@ describe("queued withdrawal reconciliation", () => {
     // claim lease is dropped and the same request is re-claimed immediately.
     expect(Date.parse(nextCheckAt as string)).toBeGreaterThanOrEqual(before + 59_000);
     expect(Date.parse(nextCheckAt as string)).toBeLessThanOrEqual(Date.now() + 61_000);
+    expect(clusterRpc.calls).toEqual([]);
   });
 
   it("backs off a closed par request whose history has no closing event yet", async () => {
@@ -719,14 +726,12 @@ describe("queued withdrawal reconciliation", () => {
         request: null,
       }),
     };
-    sweepRpc.current = {
-      getSignaturesForAddress: vi.fn().mockReturnValue({
-        send: vi.fn().mockResolvedValue([]),
-      }),
-    };
+    clusterRpc.answer("getSignaturesForAddress", []);
 
     await expect(
-      reconcileParRequest(env, ledger, parRequest({ status: "closed_or_unknown" }))
+      inSandboxScope(() =>
+        reconcileParRequest(env, ledger, parRequest({ status: "closed_or_unknown" }))
+      )
     ).resolves.toBe("closedUnknown");
     expect(ledger.advanceRequest).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -735,6 +740,15 @@ describe("queued withdrawal reconciliation", () => {
         nextCheckAt: expect.any(String),
       })
     );
+    expect(
+      clusterRpc.requests.filter(({ method }) => method === "getSignaturesForAddress")
+    ).toEqual([
+      {
+        cluster: "devnet",
+        method: "getSignaturesForAddress",
+        params: [PAR_REQUEST_ADDRESS, expect.objectContaining({ until: "request-signature" })],
+      },
+    ]);
   });
 
   it("refuses terminal lifecycle events whose nonce or settled shares disagree", () => {
