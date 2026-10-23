@@ -56,6 +56,21 @@ export function externalLinkProps(external = false) {
   };
 }
 
+/** Where the homepage's account call to action leads: the dashboard, the sign-up form, or the waitlist. */
+type AccountEntry = "dashboard" | "signup" | "waitlist";
+
+/** A session wins; otherwise the `homepageOpenSignup` flag picks the sign-up form or the waitlist. */
+function accountEntry({
+  signedIn,
+  openSignup,
+}: {
+  signedIn: boolean;
+  openSignup: boolean;
+}): AccountEntry {
+  if (signedIn) return "dashboard";
+  return openSignup ? "signup" : "waitlist";
+}
+
 /**
  * Every link the homepage points into the product with. A signed-in visitor is sent to the
  * dashboard; otherwise the `homepageOpenSignup` flag decides whether "Create account" opens the
@@ -74,11 +89,23 @@ export function resolveHomepageLinks({
   joinWaitlistLabel: string;
   dashboardLabel: string;
 }): HomepageLinks {
-  const signup: SignupLink = signedIn
-    ? { href: DASHBOARD_PATH, label: dashboardLabel, external: false }
-    : openSignup
-      ? { href: "/sign-up", label: createAccountLabel, external: false }
-      : { href: waitlistHref, label: joinWaitlistLabel, external: true };
+  let signup: SignupLink;
+  const entry = accountEntry({ signedIn, openSignup });
+  switch (entry) {
+    case "dashboard":
+      signup = { href: DASHBOARD_PATH, label: dashboardLabel, external: false };
+      break;
+    case "signup":
+      signup = { href: "/sign-up", label: createAccountLabel, external: false };
+      break;
+    case "waitlist":
+      signup = { href: waitlistHref, label: joinWaitlistLabel, external: true };
+      break;
+    default: {
+      const exhaustive: never = entry;
+      throw new Error(`Unknown homepage account entry: ${exhaustive}`);
+    }
+  }
   return {
     signup,
     signIn: signedIn ? DASHBOARD_PATH : AUTH_ENTRY_PATH,
