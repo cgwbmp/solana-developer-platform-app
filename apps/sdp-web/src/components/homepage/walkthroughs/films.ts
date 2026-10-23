@@ -14,7 +14,12 @@ type Film = {
   seconds: number;
 };
 
-/** The walkthroughs, in the order the list shows them; the first one is loaded first. */
+/**
+ * The walkthroughs, in the order the list shows them; the first one is loaded first.
+ *
+ * The MP4s are committed under `public/homepage/video` only until the walkthroughs are
+ * uploaded to YouTube; then these entries point at the YouTube videos and the files go.
+ */
 export const FILMS: readonly Film[] = [
   {
     key: "dvp",
