@@ -46,6 +46,8 @@ export function PaymentBench() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const barRefs = useRef<(HTMLElement | null)[]>([]);
   const controllerRef = useRef<BenchController | null>(null);
+  /** The bench's arrival has played out: a controller built after it starts arrived. */
+  const arrivedRef = useRef(false);
 
   const copy = useMemo<FigureCopy>(() => {
     const monthStart = new Intl.DateTimeFormat(locale, {
@@ -88,6 +90,9 @@ export function PaymentBench() {
       onPlayingChange: setPlaying,
     });
     controllerRef.current = controller;
+    /* a language or motion change rebuilds the controller unarrived; the arrival effect won't
+       run again, so carry it over or load() leaves every drawing hidden */
+    if (arrivedRef.current) controller.arrive();
 
     /* draw when the bench comes near, not at load: the kit measures glyphs, so the faces have
        to be in first */
@@ -126,7 +131,10 @@ export function PaymentBench() {
 
   useEffect(() => {
     if (!arrived) return;
-    const timer = setTimeout(() => controllerRef.current?.arrive(), ARRIVE_DELAY);
+    const timer = setTimeout(() => {
+      arrivedRef.current = true;
+      controllerRef.current?.arrive();
+    }, ARRIVE_DELAY);
     return () => clearTimeout(timer);
   }, [arrived]);
 
