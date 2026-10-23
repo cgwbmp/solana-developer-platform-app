@@ -45,7 +45,10 @@ type CodeBlockProps = {
   firstIndex: number;
   /** The lines the block keeps room for, so the card holds one height in every mode. */
   rows: number;
-  /** Whether the lines roll in now; before that they are in the markup but not painted. */
+  /**
+   * Whether the lines roll in now; before that they are in the markup but not painted. Without
+   * script, the page's noscript style shows them (`data-roll-in`).
+   */
   rolling: boolean;
   /** The answer rolls in a beat after the request. */
   answer?: boolean;
@@ -74,6 +77,7 @@ export function CodeBlock({
           <span key={id}>
             {index > 0 && "\n"}
             <span
+              data-roll-in
               className={cn(styles.line, answer && styles.lineAnswer, rolling && styles.lineIn)}
               style={{ [LINE_INDEX]: firstIndex + index } as CSSProperties}
             >

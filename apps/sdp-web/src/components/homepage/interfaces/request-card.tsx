@@ -25,7 +25,10 @@ type RequestCardProps = {
   snippet: InterfaceSnippet;
   status: string;
   responseLabel: string;
-  /** Whether the lines and status roll in now (the card has arrived on screen). */
+  /**
+   * Whether the lines and status roll in now (the card has arrived on screen). Without script,
+   * the page's noscript style shows them (`data-roll-in`).
+   */
   rolling: boolean;
   onArrive: () => void;
 };
@@ -57,6 +60,7 @@ export function RequestCard({
         </span>
         <span
           key={snippet.mode}
+          data-roll-in
           className={cn(styles.status, rolling && styles.statusIn)}
           style={
             {

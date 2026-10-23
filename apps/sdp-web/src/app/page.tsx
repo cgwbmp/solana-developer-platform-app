@@ -22,13 +22,14 @@ import { homepageOpenSignup } from "@/flags";
 import { getTranslations } from "@/i18n/server";
 
 /*
- * Without script the page must still read: the blocks that rise in (`data-rise`) and the letters
- * that form in (`data-form-letter`) wait on client effects, so a noscript style sets them in their
- * final state. Stable data attributes, since the CSS modules' class names are hashed. With script
- * it never applies.
+ * Without script the page must still read: the blocks that rise in (`data-rise`), the code lines
+ * and status that roll in (`data-roll-in`) and the letters that form in (`data-form-letter`) wait
+ * on client effects, so a noscript style sets them in their final state. Stable data attributes,
+ * since the CSS modules' class names are hashed. With script it never applies.
  */
 const NOSCRIPT_CSS = [
   "[data-rise]{opacity:1!important;transform:none!important;clip-path:none!important}",
+  "[data-roll-in]{opacity:1!important;transform:none!important}",
   "[data-form-letter]{color:inherit!important;-webkit-text-stroke:0!important;filter:none!important;opacity:1!important;transform:none!important}",
 ].join("");
 
