@@ -64,7 +64,7 @@ export function useNavScroll(navRoot: RefObject<HTMLElement | null>) {
 const { platform, builders, docs } = NAV_GROUP_IDS;
 
 /** Which group's part of the page each section belongs to (`null`: none, the hero). */
-const SECTION_GROUP: Record<string, NavGroupId | null> = {
+const SECTION_GROUP = {
   top: null,
   stack: platform,
   network: platform,
@@ -77,7 +77,11 @@ const SECTION_GROUP: Record<string, NavGroupId | null> = {
   builders,
   blog: builders,
   start: docs,
-};
+} as const satisfies Record<string, NavGroupId | null>;
+
+function isSectionId(id: string): id is keyof typeof SECTION_GROUP {
+  return Object.hasOwn(SECTION_GROUP, id);
+}
 
 /** The id of the group whose part of the page is in the middle of the screen. */
 export function useScrollSpy(): NavGroupId | null {
@@ -89,7 +93,7 @@ export function useScrollSpy(): NavGroupId | null {
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          setHere(SECTION_GROUP[entry.target.id] ?? null);
+          setHere(isSectionId(entry.target.id) ? SECTION_GROUP[entry.target.id] : null);
         }
       },
       { rootMargin: "-45% 0px -45% 0px", threshold: 0 }

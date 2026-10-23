@@ -4,7 +4,7 @@
  */
 export type City = { lat: number; lon: number; name: string };
 
-export const CITIES: Record<string, City> = {
+export const CITIES = {
   fra: { lat: 50.1, lon: 8.7, name: "Frankfurt" },
   sin: { lat: 1.3, lon: 103.8, name: "Singapore" },
   lon: { lat: 51.5, lon: -0.1, name: "London" },
@@ -21,7 +21,13 @@ export const CITIES: Record<string, City> = {
   jnb: { lat: -26.2, lon: 28.0, name: "Johannesburg" },
   mex: { lat: 19.4, lon: -99.1, name: "Mexico City" },
   hkg: { lat: 22.3, lon: 114.2, name: "Hong Kong" },
-};
+} as const satisfies Record<string, City>;
+
+export type CityKey = keyof typeof CITIES;
+
+export function isCityKey(key: string): key is CityKey {
+  return Object.hasOwn(CITIES, key);
+}
 
 export type Amount = { figure: string; currency: string };
 

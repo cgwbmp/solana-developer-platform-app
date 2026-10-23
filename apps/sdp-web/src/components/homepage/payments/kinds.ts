@@ -7,10 +7,7 @@ export type PaymentKind = (typeof PAYMENT_KINDS)[number];
  * Each kind's mark, carried by its word in the bubble (24-unit viewBox). `pathLength` matters to
  * nothing here but is kept so the marks draw identically.
  */
-export const KIND_ICONS: Record<
-  PaymentKind,
-  readonly ({ d: string } | { cx: number; cy: number; r: number })[]
-> = {
+export const KIND_ICONS = {
   pay: [{ d: "M7 17 17 7" }, { d: "M8 7h9v9" }],
   request: [{ d: "M6 3h9l4 4v14H6Z" }, { d: "M14 3v5h5" }, { d: "M9 13h6M9 17h6" }],
   recurring: [
@@ -26,20 +23,23 @@ export const KIND_ICONS: Record<
     { d: "M8.2 7.4H9.4v3.4" },
   ],
   deposit: [{ d: "M12 4v11" }, { d: "m7 10 5 5 5-5" }, { d: "M4 20h16" }],
-};
+} as const satisfies Record<
+  PaymentKind,
+  readonly ({ d: string } | { cx: number; cy: number; r: number })[]
+>;
 
 /**
  * On a phone each drawing is framed close on what it draws, moving parts included, rather than
  * on the whole floor: measured from the scenes, in their own 640 x 520 units.
  */
-const SNUG_FRAMES: Record<PaymentKind, readonly [number, number, number, number]> = {
+const SNUG_FRAMES = {
   pay: [62, 71, 582, 450],
   request: [41, 107, 597, 413],
   recurring: [101, 129, 551, 415],
   batch: [113, 98, 527, 391],
   micro: [75, 112, 570, 412],
   deposit: [88, 90, 551, 432],
-};
+} as const satisfies Record<PaymentKind, readonly [number, number, number, number]>;
 
 /** The viewBox for a drawing: the whole floor, or framed close with a margin for the fade. */
 export function figureViewBox(kind: PaymentKind, snug: boolean): string {

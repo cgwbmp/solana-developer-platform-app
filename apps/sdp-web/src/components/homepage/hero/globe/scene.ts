@@ -14,12 +14,19 @@ import * as THREE from "three";
 import { easeOutCubic as ease } from "@/lib/easing";
 import { mountRenderer } from "@/lib/webgl";
 import { GLOBE_DRAWING, landGeometry, latLon } from "./coasts";
-import { AMOUNTS, type Amount, CITIES, type GlobeLabels } from "./payments";
+import {
+  AMOUNTS,
+  type Amount,
+  CITIES,
+  type CityKey,
+  type GlobeLabels,
+  isCityKey,
+} from "./payments";
 import { ARC_FRAG, LAND_FRAG, LINE_VERT, RIM_FRAG, RIM_VERT } from "./shaders";
 import { discTexture, haloTexture, ringTexture } from "./textures";
 
 const COL = { ground: "#FBFAF9", grey: "#DEDEDD", mint: "#79E8B9" };
-const CITY_KEYS = Object.keys(CITIES);
+const CITY_KEYS = Object.keys(CITIES).filter(isCityKey);
 /* the reduced-motion scene stops drawing once everything has faded in */
 const SETTLED_AFTER = 3;
 /* the reference's per-frame decays at 60fps, as rates per second: a flung globe keeps 94% of its
@@ -55,7 +62,7 @@ export type GlobeScene = {
 };
 
 type Flight = {
-  pair: [string, string];
+  pair: [CityKey, CityKey];
   path: THREE.CatmullRomCurve3;
   mesh: THREE.Mesh<THREE.TubeGeometry, THREE.ShaderMaterial>;
   a: THREE.Vector3;
@@ -75,12 +82,12 @@ type Flight = {
 type Mark = { at: THREE.Vector3; pin: THREE.Sprite; w: number; beat: number | null };
 type Bloom = { sprite: THREE.Sprite; t: number; size: number; soft: boolean };
 
-function cityPoint(key: string, r = 1) {
+function cityPoint(key: CityKey, r = 1) {
   const city = CITIES[key];
   return latLon(city.lat, city.lon, r);
 }
 
-function arcPath(from: string, to: string) {
+function arcPath(from: CityKey, to: CityKey) {
   const a = cityPoint(from).normalize();
   const b = cityPoint(to).normalize();
   const angle = a.angleTo(b);
@@ -247,7 +254,7 @@ export function createGlobeScene({
   const flights: Flight[] = [];
   let current: Flight | null = null;
   let launched = 0;
-  function pickPair(): [string, string] | null {
+  function pickPair(): [CityKey, CityKey] | null {
     const visible = CITY_KEYS.filter((key) => facing(cityPoint(key)) > 0.35);
     for (let i = 0; i < 20; i++) {
       const a = visible[Math.floor(Math.random() * visible.length)];

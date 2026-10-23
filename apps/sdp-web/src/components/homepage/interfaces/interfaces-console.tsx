@@ -43,14 +43,18 @@ function barState(shown: boolean, turning: boolean): BarState {
 const BAR_CLASS = { idle: undefined, turning: styles.barRun, held: styles.barFull } as const;
 
 /** Arrow keys move along the tabs and wrap at either end; Home and End jump to the ends. */
-const KEY_STEPS: Record<string, (index: number) => number> = {
+const KEY_STEPS = {
   ArrowDown: (index) => (index === LAST ? 0 : index + 1),
   ArrowRight: (index) => (index === LAST ? 0 : index + 1),
   ArrowUp: (index) => (index === 0 ? LAST : index - 1),
   ArrowLeft: (index) => (index === 0 ? LAST : index - 1),
   Home: () => 0,
   End: () => LAST,
-};
+} as const satisfies Record<string, (index: number) => number>;
+
+function isStepKey(key: string): key is keyof typeof KEY_STEPS {
+  return Object.hasOwn(KEY_STEPS, key);
+}
 
 /**
  * The three ways in are the tabs of the call beside them. On a timer (the line under the chosen
@@ -143,8 +147,8 @@ export function InterfacesConsole({
   }
 
   function handleKeyDown(event: KeyboardEvent, index: number) {
-    const next = KEY_STEPS[event.key]?.(index);
-    if (next === undefined) return;
+    if (!isStepKey(event.key)) return;
+    const next = KEY_STEPS[event.key](index);
     event.preventDefault();
     choose(next);
     tabRefs.current[next]?.focus();
