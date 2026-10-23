@@ -196,7 +196,7 @@ function format(text) {
 
 const expected = format(source(coasts()));
 if (process.argv.includes("--check")) {
-  const current = await readFile(outputPath, "utf8").catch(() => "");
+  const current = await readFile(outputPath, "utf8");
   if (current !== expected) {
     process.stderr.write(
       "Globe land data is stale or hand-edited. Run: pnpm --filter sdp-web generate:globe-land\n"
