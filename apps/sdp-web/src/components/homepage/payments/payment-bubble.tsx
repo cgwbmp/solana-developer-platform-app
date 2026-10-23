@@ -16,11 +16,11 @@ function KindMark({ kind }: { kind: PaymentKind }) {
   return (
     <i className={styles.mark}>
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        {KIND_ICONS[kind].map((shape) =>
-          "d" in shape ? (
-            <path key={shape.d} pathLength={1} d={shape.d} />
+        {KIND_ICONS[kind].map((element) =>
+          "d" in element ? (
+            <path key={element.d} pathLength={1} d={element.d} />
           ) : (
-            <circle key="c" pathLength={1} cx={shape.cx} cy={shape.cy} r={shape.r} />
+            <circle key="c" pathLength={1} cx={element.cx} cy={element.cy} r={element.r} />
           )
         )}
       </svg>
