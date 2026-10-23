@@ -5,14 +5,8 @@ import { type RefObject, useEffect, useRef } from "react";
 import shared from "@/components/homepage/homepage.module.css";
 import { externalLinkProps, type SignupLink } from "@/components/homepage/homepage-links";
 import styles from "./nav.module.css";
-import { isOwnMenuKey } from "./nav-panels";
+import { isOwnMenuKey, WIDE_QUERY } from "./nav-panels";
 import type { NavLink } from "./nav-types";
-
-/**
- * Where the bar's groups come back; past it the menu is closed (the page grew past it). The other
- * side of nav.module.css's `@media (max-width: 1180px)`: keep the two in step.
- */
-const WIDE_QUERY = "(min-width: 1181px)";
 
 /**
  * The phone menu: the page while it is open. It takes focus, holds the page still (scroll lock on

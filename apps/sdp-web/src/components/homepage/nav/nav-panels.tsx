@@ -11,6 +11,13 @@ const CLOSE_DELAY_MS = 180;
 /** A click this soon after hover opened the panel confirms it rather than closing it. */
 const CLICK_GRACE_MS = 400;
 
+/**
+ * Where the bar's groups show; below it they fold into the burger, so an open panel closes and
+ * the phone menu closes past it. The other side of nav.module.css's `@media (max-width: 1180px)`:
+ * keep the two in step.
+ */
+export const WIDE_QUERY = "(min-width: 1181px)";
+
 /** An Escape meant for a menu of its own (the language dropdown) is not ours. */
 export function isOwnMenuKey(event: KeyboardEvent) {
   return event.target instanceof Element && event.target.closest('[role="menu"]') !== null;
@@ -19,7 +26,8 @@ export function isOwnMenuKey(event: KeyboardEvent) {
 /**
  * The bar's groups. Each trigger is a disclosure button: a click, Enter or Space opens and closes
  * its panel. A mouse also opens a panel by hovering its group and closes it by leaving. A panel
- * closes on Escape (focus returns to its trigger), a click elsewhere, or focus leaving its group.
+ * closes on Escape (focus returns to its trigger), a click elsewhere, focus leaving its group, or
+ * the window narrowing past the bar.
  * Focus alone never opens a panel, so Tab walks the bar's triggers, not every panel's links.
  */
 export function NavPanels({
@@ -91,11 +99,19 @@ export function NavPanels({
         onOpenChange(null);
       }
     };
+    // A panel opened from the keyboard outlives the window shrinking past the bar: CSS hides the
+    // groups, but the open state would keep the scrim up over the page.
+    const wide = window.matchMedia?.(WIDE_QUERY);
+    const onNarrow = (event: MediaQueryListEvent) => {
+      if (!event.matches) onOpenChange(null);
+    };
     document.addEventListener("keydown", onKeyDown);
     document.addEventListener("click", onClick);
+    wide?.addEventListener("change", onNarrow);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("click", onClick);
+      wide?.removeEventListener("change", onNarrow);
     };
   }, [openIndex, onOpenChange]);
 

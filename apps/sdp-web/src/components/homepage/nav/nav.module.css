@@ -507,7 +507,7 @@
   background: #08080a66;
 }
 
-/* the groups fold into the burger as soon as they no longer fit (mobile-menu.tsx WIDE_QUERY is
+/* the groups fold into the burger as soon as they no longer fit (nav-panels.tsx WIDE_QUERY is
    this breakpoint's other side: keep the two in step) */
 @media (max-width: 1180px) {
   .inner {

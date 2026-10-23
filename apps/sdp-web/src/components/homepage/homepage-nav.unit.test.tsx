@@ -190,6 +190,33 @@ describe("HomepageNav", () => {
     expect(builders.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("closes the open panel when the window narrows past the bar", async () => {
+    const listeners = new Set<(event: MediaQueryListEvent) => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.add(listener),
+      removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) =>
+        listeners.delete(listener),
+    }));
+    try {
+      await renderNav(openLinks);
+      const trigger = screen.getByRole("button", { name: t("Homepage.nav.docs.label") });
+      fireEvent.click(trigger);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+      act(() => {
+        for (const listener of listeners) {
+          listener({ matches: false } as MediaQueryListEvent);
+        }
+      });
+      expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("opens the phone menu with focus inside, locks scroll and closes back to the burger", async () => {
     await renderNav(openLinks);
     const burger = screen.getByRole("button", { name: t("Homepage.nav.openMenu") });
