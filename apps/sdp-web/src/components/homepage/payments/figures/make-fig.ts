@@ -341,7 +341,7 @@ export function makeFig({
       t0: number,
       t1: number,
       {
-        ease = "inOut" as Ease,
+        ease = "inOut",
         n = 20,
         fadeIn = 0,
         fadeOut = 0,
@@ -395,7 +395,7 @@ export function makeFig({
       const fr: Key[] = [];
       /* small dots ring out as far as big ones */
       const s = Math.max(r * 2.4, r + 8) / r;
-      for (const a of ([] as number[]).concat(ats)) {
+      for (const a of [ats].flat()) {
         fr.push(
           [a - 1, { o: 0 }],
           [a, { o: 0.9 }, "out"],

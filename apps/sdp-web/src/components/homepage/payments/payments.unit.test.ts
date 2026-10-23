@@ -10,6 +10,7 @@ import { figureViewBox, PAYMENT_KINDS } from "./kinds";
 
 const words = catalog.Homepage.payments.figure;
 const copy: FigureCopy = {
+  // SAFETY: fromEntries over FIGURE_WORDS has exactly one entry per word.
   words: Object.fromEntries(FIGURE_WORDS.map((word) => [word, words[word]])) as FigureCopy["words"],
   paidTo: (address) => `to ${address}`,
   paidCount: (paid, total) => `${paid} of ${total} paid`,
@@ -54,13 +55,19 @@ describe("buildFigure", () => {
 });
 
 describe("createFigurePlayer", () => {
+  function svgOf(host: HTMLElement) {
+    const svg = host.querySelector("svg");
+    if (!svg) throw new Error("no svg");
+    return svg;
+  }
+
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it("plays a cycle with .live, alternates the outcome and rests when eased", () => {
     const host = document.createElement("div");
     host.innerHTML = buildFigure("pay", { fonts, label: "Pay", copy }) ?? "";
-    const svg = host.querySelector("svg") as SVGSVGElement;
+    const svg = svgOf(host);
     const onEnd = vi.fn();
     const player = createFigurePlayer(svg, "en", onEnd);
     expect(player.dwell).toBe(2 * 2000 + 900);
@@ -81,7 +88,7 @@ describe("createFigurePlayer", () => {
   it("steps a counter on its beats and stops at once", () => {
     const host = document.createElement("div");
     host.innerHTML = buildFigure("micro", { fonts, label: "Micro", copy }) ?? "";
-    const svg = host.querySelector("svg") as SVGSVGElement;
+    const svg = svgOf(host);
     const balance = svg.querySelector('[data-n="4.2"]');
     const player = createFigurePlayer(svg, "en", () => {});
     player.start();
@@ -95,7 +102,7 @@ describe("createFigurePlayer", () => {
   it("stops a rolling counter where it is", () => {
     const host = document.createElement("div");
     host.innerHTML = buildFigure("deposit", { fonts, label: "Deposit", copy }) ?? "";
-    const svg = host.querySelector("svg") as SVGSVGElement;
+    const svg = svgOf(host);
     const balance = svg.querySelector('[data-n="1250"]');
     const player = createFigurePlayer(svg, "en", () => {});
     player.start();
@@ -139,6 +146,8 @@ describe("createBenchController", () => {
         playState: "running",
         onfinish: null,
       };
+      // SAFETY: the bench calls only these members of an animation; the stub lacks the rest, so it
+      // goes through unknown.
       return animation as unknown as Animation;
     });
   });

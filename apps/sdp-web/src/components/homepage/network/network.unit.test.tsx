@@ -81,6 +81,7 @@ describe("countAt", () => {
 
 describe("CountUp", () => {
   function placeAt(top: number) {
+    // SAFETY: jsdom has no layout; CountUp reads only these box fields from the rect.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       top,
       bottom: top + 40,
@@ -127,6 +128,7 @@ describe("speed canvas geometry", () => {
 describe("stepAndDraw", () => {
   function fakeContext() {
     const gradient = { addColorStop: vi.fn() };
+    // SAFETY: every member the drawing reads is a stub; gradients answer addColorStop.
     return new Proxy(
       {},
       {
@@ -165,11 +167,9 @@ describe("SpeedRace", () => {
 
   it("draws one still frame with settled rows under reduced motion", () => {
     reduced = true;
-    const ctx = new Proxy(
-      {},
-      { get: () => vi.fn(), set: () => true }
-    ) as unknown as CanvasRenderingContext2D;
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx as never);
+    // SAFETY: every member the still frame reads is a stub that returns undefined.
+    const ctx = new Proxy({}, { get: () => vi.fn(), set: () => true }) as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx);
     const raf = vi.spyOn(window, "requestAnimationFrame");
     act(() => {
       render(<SpeedRace />);

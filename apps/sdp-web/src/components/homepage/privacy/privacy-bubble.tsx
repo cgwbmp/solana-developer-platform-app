@@ -50,7 +50,7 @@ export function PrivacyBubble({ label, words }: PrivacyBubbleProps) {
     const pill = pillRef.current;
     const wordList = wordsRef.current;
     if (!root || !pill || !wordList || count === 0) return;
-    const items = Array.from(wordList.children) as HTMLElement[];
+    const items = Array.from(wordList.children).filter((item) => item instanceof HTMLElement);
 
     let current = 0;
     const fitWord = (index: number) => fitPill(pill, items[index]);

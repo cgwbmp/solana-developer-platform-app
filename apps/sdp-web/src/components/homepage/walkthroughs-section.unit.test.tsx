@@ -30,7 +30,7 @@ import { WalkthroughsSection } from "./walkthroughs-section";
 const media = {
   play: vi.fn(() => Promise.resolve()),
   load: vi.fn(),
-  tracks: [] as { mode: string }[],
+  tracks: [{ mode: "disabled" }],
 };
 
 beforeEach(() => {

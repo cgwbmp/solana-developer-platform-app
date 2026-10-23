@@ -71,7 +71,11 @@ export function CodeBlock({
   className,
 }: CodeBlockProps) {
   return (
-    <pre className={cn(styles.code, className)} style={{ [MIN_ROWS]: rows } as CSSProperties}>
+    <pre
+      className={cn(styles.code, className)}
+      // SAFETY: CSSProperties has no entry for custom properties; --rows is read by the module CSS.
+      style={{ [MIN_ROWS]: rows } as CSSProperties}
+    >
       <code>
         {keyed(lines, "l").map(({ id, item: line }, index) => (
           <span key={id}>
@@ -79,6 +83,8 @@ export function CodeBlock({
             <span
               data-roll-in
               className={cn(styles.line, answer && styles.lineAnswer, rolling && styles.lineIn)}
+              // SAFETY: CSSProperties has no entry for custom properties; --i is read by the
+              // module CSS.
               style={{ [LINE_INDEX]: firstIndex + index } as CSSProperties}
             >
               {keyed(line, "t").map(({ id: tokenId, item: token }) => (

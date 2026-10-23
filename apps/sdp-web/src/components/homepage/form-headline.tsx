@@ -126,6 +126,8 @@ export function FormHeadline({
       className={cn(styles.headline, className)}
       data-state={state}
       style={
+        // SAFETY: CSSProperties has no entry for custom properties; these are the --* names the
+        // module CSS reads.
         {
           [LETTER_STAGGER]: stagger,
           [FORM_START]: paint ? `${formAt}ms` : undefined,
@@ -149,7 +151,11 @@ export function FormHeadline({
                         key={letter.key}
                         className={styles.letter}
                         data-form-letter
-                        style={{ [LETTER_INDEX]: letter.index } as CSSProperties}
+                        style={
+                          // SAFETY: CSSProperties has no entry for custom properties;
+                          // --letter-index is read by the module CSS.
+                          { [LETTER_INDEX]: letter.index } as CSSProperties
+                        }
                       >
                         {letter.letter}
                       </span>

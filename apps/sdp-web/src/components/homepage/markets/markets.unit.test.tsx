@@ -96,18 +96,27 @@ describe("MarketsChart", () => {
   it("starts undrawn and draws in the first time it is on screen", () => {
     const { container } = render(<MarketsChart />);
     const figure = container.querySelector("figure");
-    expect(figure?.getAttribute("data-drawn")).toBe("false");
+    if (!figure) throw new Error("no figure");
+    expect(figure.getAttribute("data-drawn")).toBe("false");
 
+    const box = figure.getBoundingClientRect();
+    const entry: IntersectionObserverEntry = {
+      isIntersecting: true,
+      target: figure,
+      boundingClientRect: box,
+      intersectionRect: box,
+      intersectionRatio: 1,
+      rootBounds: null,
+      time: 0,
+    };
     act(() => {
       for (const { callback } of observers) {
-        callback(
-          [{ isIntersecting: true, target: figure } as unknown as IntersectionObserverEntry],
-          {} as IntersectionObserver
-        );
+        // SAFETY: motion's useInView reads nothing from the observer argument.
+        callback([entry], {} as IntersectionObserver);
       }
     });
-    expect(figure?.getAttribute("data-drawn")).toBe("true");
-    expect(figure?.getAttribute("data-on-screen")).toBe("true");
+    expect(figure.getAttribute("data-drawn")).toBe("true");
+    expect(figure.getAttribute("data-on-screen")).toBe("true");
   });
 
   it("uses gradient ids a url() reference can take", () => {

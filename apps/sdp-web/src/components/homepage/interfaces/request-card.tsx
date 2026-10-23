@@ -63,6 +63,8 @@ export function RequestCard({
           data-roll-in
           className={cn(styles.status, rolling && styles.statusIn)}
           style={
+            // SAFETY: CSSProperties has no entry for custom properties; these are the --* names
+            // the module CSS reads.
             {
               [STATUS_DELAY_WIDE]: statusDelay(snippet.request, snippet),
               [STATUS_DELAY_NARROW]: statusDelay(snippet.narrowRequest, snippet),

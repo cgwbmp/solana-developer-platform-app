@@ -2,7 +2,7 @@
 
 import { cn } from "@sdp/ui/cn";
 import { useReducedMotion } from "motion/react";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { restartClass } from "@/components/homepage/restart-animation";
 import { useRiseArrived } from "@/components/homepage/rise";
 import { useLocale, useTranslations } from "@/i18n/provider";
@@ -214,7 +214,7 @@ export function SpeedRace() {
           <li
             key={key}
             className={cn(styles.lane, index === 0 && styles.laneFast)}
-            style={{ top: `${(laneFraction(index) * 100).toFixed(2)}%` } as CSSProperties}
+            style={{ top: `${(laneFraction(index) * 100).toFixed(2)}%` }}
           >
             <span>{t(`Homepage.network.lanes.${key}.name`)}</span>
             <b>{t(`Homepage.network.lanes.${key}.time`)}</b>

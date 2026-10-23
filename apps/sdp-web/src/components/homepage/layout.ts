@@ -13,4 +13,5 @@ export const ANCHOR_OFFSET = NAV_HEIGHT + 8;
 export const NARROW_QUERY = "(max-width: 1000px)";
 
 /** The page root's style: the bar's height as a CSS variable, so CSS and script share one value. */
+// SAFETY: CSSProperties has no entry for custom properties; --nav-height is read by the page's CSS.
 export const homepageRootStyle = { "--nav-height": `${NAV_HEIGHT}px` } as CSSProperties;

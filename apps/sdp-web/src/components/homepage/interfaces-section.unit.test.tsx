@@ -174,7 +174,7 @@ describe("interface snippets", () => {
     const route = (method: string, path: string) =>
       `${method} ${path.replace(/\{[^}]+\}|:[^/]+/g, "*")}`;
     const required = IDEMPOTENCY_REQUIRED_ROUTES.some((each) => {
-      const [method, path] = each.split(" ") as [string, string];
+      const [method, path] = each.split(" ");
       return route(method, path) === route(snippet.method, snippet.path);
     });
     for (const request of [snippet.request, snippet.narrowRequest]) {
@@ -205,15 +205,15 @@ describe("InterfacesConsole", () => {
     expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1]);
 
     act(() => tabs[0]?.focus());
-    fireEvent.keyDown(tabs[0] as HTMLElement, { key: "ArrowDown" });
+    fireEvent.keyDown(tabs[0], { key: "ArrowDown" });
     expect(tabs[1]?.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(tabs[1]);
     expect(screen.getByRole("tabpanel").getAttribute("aria-labelledby")).toBe(tabs[1]?.id);
     expect(screen.getByRole("tabpanel").textContent).toContain("prepare-collection");
 
-    fireEvent.keyDown(tabs[1] as HTMLElement, { key: "End" });
+    fireEvent.keyDown(tabs[1], { key: "End" });
     expect(tabs[2]?.getAttribute("aria-selected")).toBe("true");
-    fireEvent.keyDown(tabs[2] as HTMLElement, { key: "ArrowDown" });
+    fireEvent.keyDown(tabs[2], { key: "ArrowDown" });
     expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
     expect(activeBar().dataset.state).toBe("held");
   });

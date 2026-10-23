@@ -47,8 +47,8 @@ function simplify(points: THREE.Vector3[], tolerance: number) {
   keep[0] = 1;
   keep[points.length - 1] = 1;
   const stack: [number, number][] = [[0, points.length - 1]];
-  while (stack.length) {
-    const [i, j] = stack.pop() as [number, number];
+  for (let span = stack.pop(); span; span = stack.pop()) {
+    const [i, j] = span;
     let far = -1;
     let farDistance = tolerance;
     for (let k = i + 1; k < j; k++) {

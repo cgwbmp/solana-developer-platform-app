@@ -208,6 +208,7 @@ describe("HomepageNav", () => {
 
       act(() => {
         for (const listener of listeners) {
+          // SAFETY: the bar's listener reads only `matches` from the event.
           listener({ matches: false } as MediaQueryListEvent);
         }
       });
@@ -245,6 +246,7 @@ describe("pickGround", () => {
   function section(ground: string | null, top: number, bottom: number) {
     const el = document.createElement("section");
     if (ground) el.setAttribute("data-ground", ground);
+    // SAFETY: jsdom has no layout; pickGround reads only these box fields from the rect.
     el.getBoundingClientRect = () => ({ top, bottom }) as DOMRect;
     document.body.append(el);
   }

@@ -36,7 +36,7 @@ type Counter = {
 type Sequence = { el: Element; list: string[]; i: number; inc: number; at: number | null };
 
 function dataOf(el: Element): DOMStringMap {
-  return (el as HTMLElement | SVGElement).dataset;
+  return el instanceof HTMLElement || el instanceof SVGElement ? el.dataset : {};
 }
 
 export function createFigurePlayer(

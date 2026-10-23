@@ -51,6 +51,8 @@ class FakeIntersectionObserver {
 
 function showSheet() {
   act(() => {
+    // SAFETY: useSceneActive reads only `isIntersecting` from the entry and nothing from the
+    // observer.
     observerCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver

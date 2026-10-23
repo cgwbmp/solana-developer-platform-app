@@ -56,6 +56,7 @@ export function PaymentBench() {
       timeZone: "UTC",
     });
     return {
+      // SAFETY: fromEntries over FIGURE_WORDS has exactly one entry per word.
       words: Object.fromEntries(
         FIGURE_WORDS.map((word) => [word, t(`Homepage.payments.figure.${word}`)])
       ) as FigureCopy["words"],

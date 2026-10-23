@@ -66,6 +66,8 @@ export function Rise({ index = 0, className, style, children, ...rest }: RisePro
         data-rise
         data-arrived={arrived}
         className={cn(styles.rise, className)}
+        // SAFETY: CSSProperties has no entry for custom properties; --rise-index is read by the
+        // module CSS.
         style={{ ...style, "--rise-index": Math.min(index, 4) } as CSSProperties}
         {...rest}
       >

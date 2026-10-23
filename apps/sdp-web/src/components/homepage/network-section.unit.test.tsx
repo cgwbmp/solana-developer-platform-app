@@ -1,22 +1,24 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import type { MessageKey } from "@/i18n/messages";
+import type { TranslationValues } from "@/i18n/translate";
 
 vi.mock("@/i18n/server", async () => {
+  const { getMessages } = await import("@/i18n/messages");
   const { translate } = await import("@/i18n/translate");
-  const { default: messages } = await import("@/../messages/en/homepage.json");
   return {
-    getTranslations: async () => (key: string, values?: Record<string, string | number>) =>
-      translate(messages, key as never, values),
+    getTranslations: async () => (key: MessageKey, values?: TranslationValues) =>
+      translate(getMessages("en"), key, values),
   };
 });
 
 vi.mock("@/i18n/provider", async () => {
+  const { getMessages } = await import("@/i18n/messages");
   const { translate } = await import("@/i18n/translate");
-  const { default: messages } = await import("@/../messages/en/homepage.json");
   return {
     useLocale: () => "en",
-    useTranslations: () => (key: string, values?: Record<string, string | number>) =>
-      translate(messages, key as never, values),
+    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
+      translate(getMessages("en"), key, values),
   };
 });
 

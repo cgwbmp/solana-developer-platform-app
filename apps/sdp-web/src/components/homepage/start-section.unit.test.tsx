@@ -98,14 +98,12 @@ describe("StartSection markup", () => {
 
 describe("LoopGate", () => {
   function stubObserver() {
-    const observers: { callback: IntersectionObserverCallback }[] = [];
+    const callbacks: IntersectionObserverCallback[] = [];
     vi.stubGlobal(
       "IntersectionObserver",
       class {
-        callback: IntersectionObserverCallback;
         constructor(callback: IntersectionObserverCallback) {
-          this.callback = callback;
-          observers.push(this);
+          callbacks.push(callback);
         }
         observe() {}
         disconnect() {}
@@ -113,11 +111,10 @@ describe("LoopGate", () => {
     );
     return (isIntersecting: boolean) =>
       act(() => {
-        for (const observer of observers) {
-          observer.callback(
-            [{ isIntersecting } as IntersectionObserverEntry],
-            observer as unknown as IntersectionObserver
-          );
+        for (const callback of callbacks) {
+          // SAFETY: the loop gate reads only `isIntersecting` from the entry and nothing from the
+          // observer.
+          callback([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver);
         }
       });
   }
@@ -148,6 +145,12 @@ describe("LoopGate", () => {
 });
 
 describe("StartDoor", () => {
+  function doorOf(container: HTMLElement) {
+    const door = container.querySelector("a");
+    if (!door) throw new Error("no door");
+    return door;
+  }
+
   function knobOf(container: HTMLElement) {
     const knob = container.querySelector<HTMLElement>("[data-knob]");
     if (!knob) throw new Error("no knob");
@@ -156,7 +159,7 @@ describe("StartDoor", () => {
 
   it("leans the knob toward a mouse and lets go when it leaves", () => {
     const { container } = render(<StartDoor signup={openLinks.signup} />);
-    const door = container.querySelector("a") as HTMLAnchorElement;
+    const door = doorOf(container);
     fireEvent.pointerMove(door, { pointerType: "mouse", clientX: 400, clientY: 0 });
     expect(door.style.getPropertyValue("--mx")).not.toBe("");
     expect(knobOf(container).style.getPropertyValue("--kx")).not.toBe("");
@@ -167,7 +170,7 @@ describe("StartDoor", () => {
   it("keeps the knob still under reduced motion", () => {
     motion.reduced = true;
     const { container } = render(<StartDoor signup={openLinks.signup} />);
-    const door = container.querySelector("a") as HTMLAnchorElement;
+    const door = doorOf(container);
     fireEvent.pointerMove(door, { pointerType: "mouse", clientX: 400, clientY: 0 });
     expect(knobOf(container).style.getPropertyValue("--kx")).toBe("");
   });

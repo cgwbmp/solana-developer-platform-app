@@ -53,6 +53,8 @@ class FakeIntersectionObserver {
 
 function showBubble() {
   act(() => {
+    // SAFETY: useSceneActive reads only `isIntersecting` from the entry and nothing from the
+    // observer.
     observerCallback?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
       {} as IntersectionObserver
