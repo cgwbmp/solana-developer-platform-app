@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -11,15 +12,6 @@ vi.mock("@/i18n/server", async () => {
   return {
     getRequestLocale: async () => "en",
     getTranslations: async () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
       translate(getMessages("en"), key, values),
   };
 });
@@ -53,7 +45,7 @@ afterEach(() => {
 
 describe("MarketsSection", () => {
   async function parse() {
-    const markup = renderToStaticMarkup(await MarketsSection());
+    const markup = renderToStaticMarkup(<EnglishI18n>{await MarketsSection()}</EnglishI18n>);
     return new DOMParser().parseFromString(markup, "text/html");
   }
 
@@ -94,7 +86,7 @@ describe("MarketsSection", () => {
 
 describe("MarketsChart", () => {
   it("starts undrawn and draws in the first time it is on screen", () => {
-    const { container } = render(<MarketsChart />);
+    const { container } = render(<MarketsChart />, { wrapper: EnglishI18n });
     const figure = container.querySelector("figure");
     if (!figure) throw new Error("no figure");
     expect(figure.getAttribute("data-drawn")).toBe("false");
@@ -120,7 +112,7 @@ describe("MarketsChart", () => {
   });
 
   it("uses gradient ids a url() reference can take", () => {
-    const { container } = render(<MarketsChart />);
+    const { container } = render(<MarketsChart />, { wrapper: EnglishI18n });
     for (const gradient of container.querySelectorAll("linearGradient")) {
       expect(gradient.id).toMatch(/^[a-zA-Z0-9-]+$/);
     }

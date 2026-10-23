@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -12,20 +13,10 @@ vi.mock("@/i18n/server", async () => {
   };
 });
 
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-
 import { NetworkSection } from "./network-section";
 
 async function render() {
-  return renderToStaticMarkup(await NetworkSection());
+  return renderToStaticMarkup(<EnglishI18n>{await NetworkSection()}</EnglishI18n>);
 }
 
 describe("NetworkSection", () => {

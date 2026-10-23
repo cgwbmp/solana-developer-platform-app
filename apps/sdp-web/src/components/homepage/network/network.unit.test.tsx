@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MessageKey } from "@/i18n/messages";
-import type { TranslationValues } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 import { CountUp, countAt } from "./count-up";
 import {
   createRaceState,
@@ -14,36 +14,9 @@ import {
 } from "./speed-canvas";
 import { SpeedRace } from "./speed-race";
 
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => reduced,
-}));
-
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-
-let reduced = false;
-
 beforeEach(() => {
-  reduced = false;
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn((query: string) => ({
-      matches: query.includes("reduce") ? reduced : false,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-    }))
-  );
+  stubMatchMedia();
+  setReducedMotion(false);
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -90,7 +63,9 @@ describe("CountUp", () => {
 
   it("shows the final figure in the catalog's words and reads it once", () => {
     placeAt(100);
-    render(<CountUp to={30} message="Homepage.network.stats.partners.value" />);
+    render(<CountUp to={30} message="Homepage.network.stats.partners.value" />, {
+      wrapper: EnglishI18n,
+    });
     const shown = screen.getAllByText("30+");
     expect(shown).toHaveLength(2);
     expect(shown[0].getAttribute("aria-hidden")).toBe("true");
@@ -99,13 +74,17 @@ describe("CountUp", () => {
 
   it("keeps a figure already on screen at its final value instead of counting", () => {
     placeAt(100);
-    render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />);
+    render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />, {
+      wrapper: EnglishI18n,
+    });
     expect(screen.getAllByText("200+")).toHaveLength(2);
   });
 
   it("keeps the final figure on a figure that starts off screen until it counts", () => {
     placeAt(5000);
-    render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />);
+    render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />, {
+      wrapper: EnglishI18n,
+    });
     const shown = screen.getAllByText("200+");
     expect(shown).toHaveLength(2);
     expect(shown.some((element) => element.getAttribute("aria-hidden") === "true")).toBe(true);
@@ -160,19 +139,19 @@ describe("stepAndDraw", () => {
 describe("SpeedRace", () => {
   it("keeps its labels when the 2D context is unavailable", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-    render(<SpeedRace />);
+    render(<SpeedRace />, { wrapper: EnglishI18n });
     expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(/^The same payment/);
     expect(screen.getByText("Solana, via SDP")).toBeTruthy();
   });
 
   it("draws one still frame with settled rows under reduced motion", () => {
-    reduced = true;
+    setReducedMotion(true);
     // SAFETY: every member the still frame reads is a stub that returns undefined.
     const ctx = new Proxy({}, { get: () => vi.fn(), set: () => true }) as CanvasRenderingContext2D;
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(ctx);
     const raf = vi.spyOn(window, "requestAnimationFrame");
     act(() => {
-      render(<SpeedRace />);
+      render(<SpeedRace />, { wrapper: EnglishI18n });
     });
     expect(screen.getAllByText(/^slot 291,0\d\d,\d{3}$/)).toHaveLength(3);
     expect(screen.getByText("1,020,000.00 USDC")).toBeTruthy();

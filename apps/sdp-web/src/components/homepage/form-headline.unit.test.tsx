@@ -2,25 +2,34 @@
 
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const motion = vi.hoisted(() => ({ reduced: false }));
-
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useInView: () => false,
-  useReducedMotion: () => motion.reduced,
-}));
-
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 import { FormHeadline, splitHeadline } from "./form-headline";
 
+/* never reports: the headline stays off screen, so only `start` sets it going */
+class FakeIntersectionObserver implements IntersectionObserver {
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds: readonly number[] = [];
+  readonly scrollMargin = "";
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+
 beforeEach(() => {
-  motion.reduced = false;
+  stubMatchMedia();
+  setReducedMotion(false);
+  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   vi.useFakeTimers();
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("splitHeadline", () => {
@@ -78,7 +87,7 @@ describe("FormHeadline", () => {
   });
 
   it("goes straight to solid under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     render(<FormHeadline parts={["Hello"]} start />);
 
     expect(screen.getByRole("heading").dataset.state).toBe("solid");

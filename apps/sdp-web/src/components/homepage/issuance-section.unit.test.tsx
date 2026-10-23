@@ -4,8 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
-
-const motion = vi.hoisted(() => ({ reduced: false }));
+import { EnglishI18n } from "@/test/i18n";
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -16,19 +16,6 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => motion.reduced,
-}));
 
 import { easeOutCubic } from "@/lib/easing";
 import { IssuanceSection } from "./issuance-section";
@@ -61,7 +48,8 @@ function showSheet() {
 }
 
 beforeEach(() => {
-  motion.reduced = false;
+  stubMatchMedia();
+  setReducedMotion(false);
   observerCallback = undefined;
   disconnect.mockClear();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
@@ -75,7 +63,7 @@ afterEach(() => {
 
 describe("IssuanceSection", () => {
   it("renders the section landmark with its heading, copy and sandbox link", async () => {
-    const markup = renderToStaticMarkup(await IssuanceSection());
+    const markup = renderToStaticMarkup(<EnglishI18n>{await IssuanceSection()}</EnglishI18n>);
     const doc = new DOMParser().parseFromString(markup, "text/html");
 
     const section = doc.querySelector("section#issuance");
@@ -100,7 +88,7 @@ describe("IssuanceSection", () => {
 
 describe("IssuanceSheet", () => {
   it("lists the example asset as terms and values", () => {
-    render(<IssuanceSheet />);
+    render(<IssuanceSheet />, { wrapper: EnglishI18n });
     const terms = screen.getAllByRole("term").map((term) => term.textContent);
     expect(terms).toEqual([
       "USDx an example asset",
@@ -116,9 +104,9 @@ describe("IssuanceSheet", () => {
   });
 
   it("stays in its first state under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     vi.useFakeTimers();
-    render(<IssuanceSheet />);
+    render(<IssuanceSheet />, { wrapper: EnglishI18n });
 
     expect(observerCallback).toBeUndefined();
     expect(vi.getTimerCount()).toBe(0);
@@ -131,7 +119,7 @@ describe("IssuanceSheet", () => {
 
   it("runs the lifecycle while on screen and stops on unmount", () => {
     vi.useFakeTimers();
-    const { unmount } = render(<IssuanceSheet />);
+    const { unmount } = render(<IssuanceSheet />, { wrapper: EnglishI18n });
     showSheet();
 
     act(() => {
@@ -152,7 +140,7 @@ describe("IssuanceSheet", () => {
 
   it("does not advance while off screen", () => {
     vi.useFakeTimers();
-    render(<IssuanceSheet />);
+    render(<IssuanceSheet />, { wrapper: EnglishI18n });
 
     act(() => {
       vi.advanceTimersByTime(10_000);

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { getMessages, type MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -13,15 +14,6 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
 
 import { PaymentKindProvider } from "./payments/payment-kind-context";
 import { PaymentsSection } from "./payments-section";
@@ -29,9 +21,11 @@ import { PaymentsSection } from "./payments-section";
 async function renderPayments() {
   const container = document.createElement("div");
   container.innerHTML = renderToStaticMarkup(
-    <PaymentKindProvider>
-      <PaymentsSection />
-    </PaymentKindProvider>
+    <EnglishI18n>
+      <PaymentKindProvider>
+        <PaymentsSection />
+      </PaymentKindProvider>
+    </EnglishI18n>
   );
   return container;
 }

@@ -4,8 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
-
-const motion = vi.hoisted(() => ({ reduced: false }));
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -16,19 +15,6 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => motion.reduced,
-}));
 
 import { PrivacyBubble } from "./privacy/privacy-bubble";
 import { PrivacySection } from "./privacy-section";
@@ -72,12 +58,12 @@ beforeEach(() => {
     configurable: true,
     value: { ready: Promise.resolve() },
   });
-  motion.reduced = false;
   observerCallback = undefined;
   disconnect.mockClear();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   // a narrow screen: the cycle starts without the wide-screen stagger
-  vi.stubGlobal("matchMedia", (query: string) => ({ matches: true, media: query }));
+  stubMatchMedia(() => true);
+  setReducedMotion(false);
 });
 
 afterEach(() => {
@@ -118,7 +104,7 @@ describe("PrivacyBubble", () => {
   });
 
   it("stays on its first word under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     vi.useFakeTimers();
     render(<PrivacyBubble label={label} words={words} />);
     const picture = screen.getByRole("img");

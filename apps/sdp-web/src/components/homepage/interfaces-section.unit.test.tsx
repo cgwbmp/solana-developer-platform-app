@@ -8,8 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
-
-const motion = vi.hoisted(() => ({ reduced: false }));
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 // jsdom has no AnimationEvent, so React would listen for the prefixed `webkitAnimationEnd`; with
 // it defined before React DOM loads, React listens for `animationend` as browsers send it.
@@ -25,19 +24,6 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => motion.reduced,
-}));
 
 import { InterfacesConsole } from "./interfaces/interfaces-console";
 import { INTERFACE_SNIPPETS, lineText, responseRows } from "./interfaces/snippets";
@@ -77,13 +63,15 @@ function activeBar() {
 }
 
 beforeEach(() => {
-  motion.reduced = false;
+  stubMatchMedia();
+  setReducedMotion(false);
   vi.useFakeTimers();
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("InterfacesSection", () => {
@@ -230,7 +218,7 @@ describe("InterfacesConsole", () => {
   });
 
   it("does not turn under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     renderConsole();
     act(() => {
       vi.advanceTimersByTime(600);

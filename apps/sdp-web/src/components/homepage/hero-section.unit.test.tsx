@@ -1,22 +1,17 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessages, type MessageKey } from "@/i18n/messages";
+import { I18nProvider } from "@/i18n/provider";
 import { type TranslationValues, translate } from "@/i18n/translate";
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 
 function t(key: MessageKey, values?: TranslationValues) {
   return translate(getMessages("en"), key, values);
 }
 
 vi.mock("@/i18n/server", () => ({ getTranslations: async () => t }));
-vi.mock("@/i18n/provider", () => ({ useTranslations: () => t }));
-
-const motion = vi.hoisted(() => ({ reduced: false }));
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => motion.reduced,
-}));
 
 import { glideTarget, HeroGlide } from "./hero/hero-glide";
 import { SDP_BUILDERS, SOLANA_BUILDERS } from "./hero/hero-logos";
@@ -37,9 +32,18 @@ const waitlistLinks: HomepageLinks = {
 
 async function renderHero(links: HomepageLinks) {
   const container = document.createElement("div");
-  container.innerHTML = renderToStaticMarkup(await HeroSection({ links }));
+  container.innerHTML = renderToStaticMarkup(
+    <I18nProvider locale="en" messages={getMessages("en")}>
+      {await HeroSection({ links })}
+    </I18nProvider>
+  );
   return container;
 }
+
+beforeEach(() => {
+  stubMatchMedia();
+  setReducedMotion(false);
+});
 
 describe("HeroSection", () => {
   it("is the page's paper-ground first screen with its one h1", async () => {
@@ -122,7 +126,6 @@ describe("glideTarget", () => {
 describe("HeroGlide", () => {
   afterEach(() => {
     cleanup();
-    motion.reduced = false;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -134,7 +137,6 @@ describe("HeroGlide", () => {
     const next = document.createElement("section");
     next.id = "stack";
     document.body.append(hero, next);
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
     let y = 0;
     vi.spyOn(window, "scrollY", "get").mockImplementation(() => y);
     vi.spyOn(next, "getBoundingClientRect").mockImplementation(() =>
@@ -166,7 +168,7 @@ describe("HeroGlide", () => {
   });
 
   it("never glides under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     const glide = mountGlide();
     window.dispatchEvent(new Event("wheel"));
     glide.scrollDown();

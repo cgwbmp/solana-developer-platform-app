@@ -1,38 +1,30 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getMessages, type MessageKey } from "@/i18n/messages";
-import { type TranslationValues, translate } from "@/i18n/translate";
-
-const mocks = vi.hoisted(() => ({
-  reduced: false,
-  webgl: true,
-  createGlobeScene: vi.fn(),
-  drawStaticGlobe: vi.fn(() => true),
-}));
-
-function t(key: MessageKey, values?: TranslationValues) {
-  return translate(getMessages("en"), key, values);
-}
-
-vi.mock("@/i18n/provider", () => ({ useTranslations: () => t }));
-vi.mock("@/lib/webgl", () => ({ supportsWebGL: () => mocks.webgl }));
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => mocks.reduced,
-}));
-vi.mock("./scene", () => ({ createGlobeScene: mocks.createGlobeScene }));
-vi.mock("./static-globe", () => ({ drawStaticGlobe: mocks.drawStaticGlobe }));
-
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
+import { EnglishI18n } from "@/test/i18n";
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 import { HeroGlobe } from "./hero-globe";
+import * as sceneModule from "./scene";
+import * as staticGlobeModule from "./static-globe";
 
 class ResizeObserverStub {
   observe() {}
   disconnect() {}
 }
 
+/* the browser's canvas: a WebGL context, or none at all */
+function stubWebGL(supported: boolean) {
+  // SAFETY: the WebGL probe calls only `getExtension` on the context; every member is a stub that
+  // returns null.
+  const context = new Proxy({}, { get: () => () => null }) as WebGL2RenderingContext;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(supported ? context : null);
+}
+
+let createGlobeScene: MockInstance<typeof sceneModule.createGlobeScene>;
+let drawStaticGlobe: MockInstance<typeof staticGlobeModule.drawStaticGlobe>;
+
 async function renderGlobe() {
-  const view = render(<HeroGlobe />);
+  const view = render(<HeroGlobe />, { wrapper: EnglishI18n });
   /* the dynamic imports settle */
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -41,16 +33,12 @@ async function renderGlobe() {
 }
 
 beforeEach(() => {
-  mocks.reduced = false;
-  mocks.webgl = true;
-  mocks.createGlobeScene.mockReset();
-  mocks.drawStaticGlobe.mockClear();
+  stubMatchMedia();
+  setReducedMotion(false);
+  stubWebGL(true);
+  createGlobeScene = vi.spyOn(sceneModule, "createGlobeScene").mockReturnValue(null);
+  drawStaticGlobe = vi.spyOn(staticGlobeModule, "drawStaticGlobe").mockReturnValue(true);
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
-  vi.stubGlobal("matchMedia", () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-  }));
 });
 
 afterEach(() => {
@@ -60,27 +48,27 @@ afterEach(() => {
 });
 
 describe("HeroGlobe", () => {
-  it("draws the still planet and never loads three.js without WebGL", async () => {
-    mocks.webgl = false;
+  it("draws the still planet and never builds the live scene without WebGL", async () => {
+    stubWebGL(false);
     const globe = await renderGlobe();
     expect(globe?.dataset.mode).toBe("static");
-    expect(mocks.createGlobeScene).not.toHaveBeenCalled();
-    expect(mocks.drawStaticGlobe).toHaveBeenCalledTimes(1);
+    expect(createGlobeScene).not.toHaveBeenCalled();
+    expect(drawStaticGlobe).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the still planet when the renderer cannot be made", async () => {
-    mocks.createGlobeScene.mockReturnValue(null);
+    createGlobeScene.mockReturnValue(null);
     const globe = await renderGlobe();
-    expect(mocks.createGlobeScene).toHaveBeenCalledTimes(1);
+    expect(createGlobeScene).toHaveBeenCalledTimes(1);
     expect(globe?.dataset.mode).toBe("static");
   });
 
   it("runs the live scene, hands it the catalog's tag words, and disposes it on unmount", async () => {
     const scene = { setActive: vi.fn(), dispose: vi.fn() };
-    mocks.createGlobeScene.mockReturnValue(scene);
+    createGlobeScene.mockReturnValue(scene);
     const globe = await renderGlobe();
     expect(globe?.dataset.mode).toBe("live");
-    const options = mocks.createGlobeScene.mock.calls[0][0];
+    const options = createGlobeScene.mock.calls[0][0];
     expect(options.reduced).toBe(false);
     expect(options.labels.from("Lagos")).toBe("from Lagos");
     expect(options.labels.confirmed).toBe("Confirmed");
@@ -92,7 +80,7 @@ describe("HeroGlobe", () => {
 
   it("rests while the tab is hidden", async () => {
     const scene = { setActive: vi.fn(), dispose: vi.fn() };
-    mocks.createGlobeScene.mockReturnValue(scene);
+    createGlobeScene.mockReturnValue(scene);
     await renderGlobe();
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     document.dispatchEvent(new Event("visibilitychange"));
@@ -100,18 +88,18 @@ describe("HeroGlobe", () => {
   });
 
   it("asks the scene for its still, already-landed state under reduced motion", async () => {
-    mocks.reduced = true;
-    mocks.createGlobeScene.mockReturnValue({ setActive: vi.fn(), dispose: vi.fn() });
+    setReducedMotion(true);
+    createGlobeScene.mockReturnValue({ setActive: vi.fn(), dispose: vi.fn() });
     await renderGlobe();
-    expect(mocks.createGlobeScene.mock.calls[0][0].reduced).toBe(true);
+    expect(createGlobeScene.mock.calls[0][0].reduced).toBe(true);
   });
 
   it("swaps to the still planet when the WebGL context is lost", async () => {
     const scene = { setActive: vi.fn(), dispose: vi.fn() };
-    mocks.createGlobeScene.mockReturnValue(scene);
+    createGlobeScene.mockReturnValue(scene);
     const globe = await renderGlobe();
     await act(async () => {
-      mocks.createGlobeScene.mock.calls[0][0].onLost();
+      createGlobeScene.mock.calls[0][0].onLost();
     });
     expect(scene.dispose).toHaveBeenCalled();
     expect(globe?.dataset.mode).toBe("static");

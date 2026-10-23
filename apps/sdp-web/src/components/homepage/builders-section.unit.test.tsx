@@ -9,7 +9,6 @@ function t(key: MessageKey, values?: TranslationValues) {
 }
 
 vi.mock("@/i18n/server", () => ({ getTranslations: async () => t }));
-vi.mock("@/i18n/provider", () => ({ useTranslations: () => t }));
 
 import { FILMS, filmUrl, SERIES_URL } from "./builders/films";
 import { BuildersSection } from "./builders-section";

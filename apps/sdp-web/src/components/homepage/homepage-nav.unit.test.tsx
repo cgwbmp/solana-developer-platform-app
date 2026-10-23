@@ -12,17 +12,11 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("@/i18n/provider", () => ({ useLocale: () => "es" }));
-vi.mock("@/components/language-picker", () => ({
-  LanguagePicker: () => (
-    <button type="button" aria-label="Language">
-      A
-    </button>
-  ),
-}));
+vi.mock("next/navigation", () => import("@/test/next-navigation"));
 
 import { getMessages } from "@/i18n/messages";
 import { translate } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 import type { HomepageLinks } from "./homepage-links";
 import { HomepageNav } from "./homepage-nav";
 import { pickGround } from "./nav/use-nav-scroll";
@@ -44,7 +38,7 @@ const openLinks: HomepageLinks = {
 };
 
 async function renderNav(links: HomepageLinks) {
-  render(await HomepageNav({ links }));
+  render(await HomepageNav({ links }), { wrapper: EnglishI18n });
 }
 
 beforeEach(() => {
@@ -71,7 +65,9 @@ describe("HomepageNav", () => {
     );
 
     const banner = screen.getByRole("banner");
-    expect(within(banner).getByRole("button", { name: "Language" })).toBeTruthy();
+    expect(
+      within(banner).getByRole("button", { name: t("Shared.dashboardShell.language") })
+    ).toBeTruthy();
     expect(
       within(banner)
         .getByRole("link", { name: t("Homepage.cta.signIn") })
@@ -114,7 +110,7 @@ describe("HomepageNav", () => {
   });
 
   it("points the panels at the in-page sections and the docs", async () => {
-    const { container } = render(await HomepageNav({ links: openLinks }));
+    const { container } = render(await HomepageNav({ links: openLinks }), { wrapper: EnglishI18n });
     const hrefs = (id: string) =>
       Array.from(container.querySelectorAll(`#${id} a`)).map((a) => a.getAttribute("href"));
 
@@ -135,7 +131,7 @@ describe("HomepageNav", () => {
   });
 
   it("opens the builders' films in a new tab and says so", async () => {
-    const { container } = render(await HomepageNav({ links: openLinks }));
+    const { container } = render(await HomepageNav({ links: openLinks }), { wrapper: EnglishI18n });
     const films = Array.from(container.querySelectorAll("#homepage-nav-builders a")).slice(3);
 
     expect(films.map((a) => a.textContent)).toEqual([

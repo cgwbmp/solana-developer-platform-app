@@ -4,9 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessages, type MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
 import type { HomepageLinks } from "./homepage-links";
-
-const motion = vi.hoisted(() => ({ reduced: false }));
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
@@ -16,10 +15,6 @@ vi.mock("@/i18n/server", async () => {
       translate(getMessages("en"), key, values),
   };
 });
-vi.mock("motion/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("motion/react")>()),
-  useReducedMotion: () => motion.reduced,
-}));
 
 import { LoopGate } from "./start/loop-gate";
 import { StartDoor } from "./start/start-door";
@@ -44,7 +39,8 @@ async function renderSection(links: HomepageLinks) {
 }
 
 beforeEach(() => {
-  motion.reduced = false;
+  stubMatchMedia();
+  setReducedMotion(false);
 });
 
 afterEach(() => {
@@ -168,7 +164,7 @@ describe("StartDoor", () => {
   });
 
   it("keeps the knob still under reduced motion", () => {
-    motion.reduced = true;
+    setReducedMotion(true);
     const { container } = render(<StartDoor signup={openLinks.signup} />);
     const door = doorOf(container);
     fireEvent.pointerMove(door, { pointerType: "mouse", clientX: 400, clientY: 0 });

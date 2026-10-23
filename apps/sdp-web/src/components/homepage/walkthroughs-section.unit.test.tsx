@@ -4,21 +4,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
+import { EnglishI18n } from "@/test/i18n";
 
 vi.mock("@/i18n/server", async () => {
   const { getMessages } = await import("@/i18n/messages");
   const { translate } = await import("@/i18n/translate");
   return {
     getTranslations: async () => (key: MessageKey, values?: TranslationValues) =>
-      translate(getMessages("en"), key, values),
-  };
-});
-vi.mock("@/i18n/provider", async () => {
-  const { getMessages } = await import("@/i18n/messages");
-  const { translate } = await import("@/i18n/translate");
-  return {
-    useLocale: () => "en",
-    useTranslations: () => (key: MessageKey, values?: TranslationValues) =>
       translate(getMessages("en"), key, values),
   };
 });
@@ -53,14 +45,14 @@ afterEach(() => {
 
 describe("WalkthroughsSection", () => {
   it("keeps its anchor on a night ground, under one h2", async () => {
-    const markup = renderToStaticMarkup(await WalkthroughsSection());
+    const markup = renderToStaticMarkup(<EnglishI18n>{await WalkthroughsSection()}</EnglishI18n>);
     expect(markup).toMatch(/^<section id="blog" data-ground="night"/);
     expect(markup.match(/<h2/g)).toHaveLength(1);
     expect(markup).toContain("The sandbox walkthroughs.");
   });
 
   it("loads nothing until asked, with the poster and a caption track", async () => {
-    const markup = renderToStaticMarkup(await WalkthroughsSection());
+    const markup = renderToStaticMarkup(<EnglishI18n>{await WalkthroughsSection()}</EnglishI18n>);
     expect(markup).toContain('preload="none"');
     expect(markup).toContain('poster="/homepage/posters/dvp.jpg"');
     expect(markup).toContain('src="/homepage/video/dvp-demo.mp4"');
@@ -82,7 +74,7 @@ describe("WalkthroughsPlayer", () => {
   }
 
   it("lists the films as buttons, the first one current", () => {
-    render(<WalkthroughsPlayer />);
+    render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     const [dvp, v1] = chapters();
     expect(dvp?.getAttribute("aria-current")).toBe("true");
     expect(v1?.getAttribute("aria-current")).toBe("false");
@@ -94,7 +86,7 @@ describe("WalkthroughsPlayer", () => {
   });
 
   it("swaps the film from the list, captions on, and leaves focus on the row pressed", () => {
-    const { container } = render(<WalkthroughsPlayer />);
+    const { container } = render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     const [dvp, v1] = chapters();
     if (!dvp || !v1) throw new Error("missing chapters");
     v1.focus();
@@ -116,7 +108,7 @@ describe("WalkthroughsPlayer", () => {
   });
 
   it("plays the current film again without reloading it", () => {
-    render(<WalkthroughsPlayer />);
+    render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     const [dvp] = chapters();
     if (!dvp) throw new Error("missing chapters");
     fireEvent.click(dvp);
@@ -125,7 +117,7 @@ describe("WalkthroughsPlayer", () => {
   });
 
   it("hands focus to the video on Watch, and back to Watch when the film ends", () => {
-    const { container } = render(<WalkthroughsPlayer />);
+    const { container } = render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     const video = container.querySelector("video");
     if (!video) throw new Error("missing video");
     // hydrated: the controls wait for the film
@@ -156,7 +148,7 @@ describe("WalkthroughsPlayer refusals", () => {
     media.play.mockImplementationOnce(() =>
       Promise.reject(new DOMException("needs a gesture", "NotAllowedError"))
     );
-    const { container } = render(<WalkthroughsPlayer />);
+    const { container } = render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     const video = container.querySelector("video");
     const [, v1] = Array.from(
       screen.getByRole("list", { name: "Chapters" }).querySelectorAll("button")
@@ -175,7 +167,7 @@ describe("WalkthroughsPlayer refusals", () => {
     media.play.mockImplementationOnce(() =>
       Promise.reject(new DOMException("interrupted", "AbortError"))
     );
-    render(<WalkthroughsPlayer />);
+    render(<WalkthroughsPlayer />, { wrapper: EnglishI18n });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /^Watch/ }));
     });
