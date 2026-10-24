@@ -1,5 +1,6 @@
 import { RAMP_PROVIDERS, type RampProviderId } from "@sdp/types/provider-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rampProvidersInReleaseChannel } from "@/flags/release-channel";
 
 /*
  * Demo mode end to end: every request is what a Payments screen's route handler would send the
@@ -363,6 +364,24 @@ describe("ramps and the release channel", () => {
     browser.rampProviders = ["moonpay"];
     expect((await quote("stripe")).status).toBe(400);
     expect((await quote("moonpay")).status).toBe(201);
+  });
+
+  it("walks no ramp stable hides: no sample transfer of one and every quote refused", async () => {
+    // The providers stable's capped flags leave on, from the maturity table, not picked here.
+    browser.rampProviders = rampProvidersInReleaseChannel("stable");
+    const hidden = RAMP_PROVIDERS.filter((provider) => !browser.rampProviders.includes(provider));
+    const transfers = await data<{ id: string; provider?: string }[]>(
+      "/v1/payments/transfers?pageSize=100"
+    );
+    expect(transfers.length).toBeGreaterThan(0);
+    expect(
+      transfers.filter(({ provider }) =>
+        hidden.some((hiddenProvider) => hiddenProvider === provider)
+      )
+    ).toEqual([]);
+    for (const provider of hidden) {
+      expect((await quote(provider)).status, provider).toBe(400);
+    }
   });
 
   it("leaves a sample ramp transfer of a hidden provider out of the lists", async () => {
