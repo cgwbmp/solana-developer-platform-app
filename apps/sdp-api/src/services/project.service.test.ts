@@ -253,7 +253,7 @@ describe("ProjectService", () => {
     const projectId = TEST_PROJECT.id;
 
     describe("addMember", () => {
-      it("adds a member with specified role", async () => {
+      it("adds a member", async () => {
         // Create another user
         await db
           .prepare(
@@ -261,11 +261,10 @@ describe("ProjectService", () => {
           )
           .run();
 
-        const member = await projectService.addMember(projectId, "usr_new123", "developer");
+        const member = await projectService.addMember(projectId, "usr_new123");
 
         expect(member.id).toMatch(/^pm_/);
         expect(member.userId).toBe("usr_new123");
-        expect(member.role).toBe("developer");
       });
 
       it("throws for duplicate membership", async () => {
@@ -275,45 +274,11 @@ describe("ProjectService", () => {
           )
           .run();
 
-        await projectService.addMember(projectId, "usr_dup123", "viewer");
+        await projectService.addMember(projectId, "usr_dup123");
 
-        await expect(
-          projectService.addMember(projectId, "usr_dup123", "developer")
-        ).rejects.toThrow("User is already a member of this project");
-      });
-    });
-
-    describe("updateMemberRole", () => {
-      it("updates member role", async () => {
-        await db
-          .prepare(
-            "INSERT OR REPLACE INTO users (id, email, email_verified, status) VALUES ('usr_role123', 'role@example.com', 1, 'active')"
-          )
-          .run();
-
-        await projectService.addMember(projectId, "usr_role123", "viewer");
-
-        await projectService.updateMemberRole(projectId, "usr_role123", "developer");
-
-        const membership = await projectService.getMembership(projectId, "usr_role123");
-        expect(membership?.role).toBe("developer");
-      });
-    });
-
-    describe("removeMember", () => {
-      it("removes member from project", async () => {
-        await db
-          .prepare(
-            "INSERT OR REPLACE INTO users (id, email, email_verified, status) VALUES ('usr_remove123', 'remove@example.com', 1, 'active')"
-          )
-          .run();
-
-        await projectService.addMember(projectId, "usr_remove123", "developer");
-
-        await projectService.removeMember(projectId, "usr_remove123");
-
-        const membership = await projectService.getMembership(projectId, "usr_remove123");
-        expect(membership).toBeNull();
+        await expect(projectService.addMember(projectId, "usr_dup123")).rejects.toThrow(
+          "User is already a member of this project"
+        );
       });
     });
 

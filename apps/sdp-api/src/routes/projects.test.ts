@@ -319,7 +319,6 @@ describe("Projects Routes", () => {
   // Project members are managed by a signed-in person only (HOO-2099).
   describe("Project Members", () => {
     const projectId = TEST_PROJECT.id;
-    const projectMemberId = `pm_${TEST_PROJECT.id}_${TEST_USER.id}`;
 
     it("lists project members", async () => {
       const res = await app.request(
@@ -359,10 +358,7 @@ describe("Projects Routes", () => {
           headers: {
             ...clerkHeaders(clerkToken, projectId),
           },
-          body: JSON.stringify({
-            userId: "usr_test_member123",
-            role: "developer",
-          }),
+          body: JSON.stringify({ userId: "usr_test_member123" }),
         },
         env
       );
@@ -370,7 +366,6 @@ describe("Projects Routes", () => {
       expect(res.status).toBe(201);
       const body = await res.json();
       expect(body.data.member.userId).toBe("usr_test_member123");
-      expect(body.data.member.role).toBe("developer");
     });
 
     it("returns 400 for non-org member", async () => {
@@ -397,45 +392,6 @@ describe("Projects Routes", () => {
       expect(res.status).toBe(400);
       const body = await res.json();
       expect(body.error.message).toContain("not a member of this organization");
-    });
-
-    it("updates and removes a project member", async () => {
-      const db = getDb(env);
-
-      const updateRes = await app.request(
-        `/v1/projects/${projectId}/members/${projectMemberId}`,
-        {
-          method: "PATCH",
-          headers: {
-            ...clerkHeaders(clerkToken, projectId),
-          },
-          body: JSON.stringify({ role: "viewer" }),
-        },
-        env
-      );
-      expect(updateRes.status).toBe(204);
-
-      const updated = await db
-        .prepare("SELECT role FROM project_members WHERE id = ?")
-        .bind(`pm_${TEST_PROJECT.id}_${TEST_USER.id}`)
-        .first<{ role: string }>();
-      expect(updated?.role).toBe("viewer");
-
-      const deleteRes = await app.request(
-        `/v1/projects/${projectId}/members/${projectMemberId}`,
-        {
-          method: "DELETE",
-          headers: clerkHeaders(clerkToken, projectId),
-        },
-        env
-      );
-      expect(deleteRes.status).toBe(204);
-
-      const removed = await db
-        .prepare("SELECT id FROM project_members WHERE id = ?")
-        .bind(`pm_${TEST_PROJECT.id}_${TEST_USER.id}`)
-        .first();
-      expect(removed).toBeNull();
     });
   });
 
@@ -494,7 +450,7 @@ describe("Projects Routes", () => {
             ...clerkHeaders(clerkToken, TEST_PRODUCTION_PROJECT.id),
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ userId: "usr_test_clerk_member", role: "admin" }),
+          body: JSON.stringify({ userId: "usr_test_clerk_member" }),
         },
         env
       );
@@ -502,11 +458,11 @@ describe("Projects Routes", () => {
       expect(res.status).toBe(201);
       const membership = await db
         .prepare(
-          "SELECT role FROM project_members WHERE project_id = ? AND user_id = 'usr_test_clerk_member'"
+          "SELECT id FROM project_members WHERE project_id = ? AND user_id = 'usr_test_clerk_member'"
         )
         .bind(TEST_PRODUCTION_PROJECT.id)
-        .first<{ role: string }>();
-      expect(membership?.role).toBe("admin");
+        .first<{ id: string }>();
+      expect(membership).not.toBeNull();
     });
   });
 });

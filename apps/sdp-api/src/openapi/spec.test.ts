@@ -67,6 +67,23 @@ function getWalletListItemSchema(value: unknown): TestJsonSchema {
 }
 
 describe("OpenAPI spec", () => {
+  it("requires no project header on organization membership routes", () => {
+    const doc = createOpenApiDocument();
+    for (const [path, method] of [
+      ["/v1/members/invite", "post"],
+      ["/v1/members/invitations/{invitationId}", "delete"],
+      ["/v1/members/me", "delete"],
+      ["/v1/members/{memberId}", "patch"],
+      ["/v1/members/{memberId}", "delete"],
+    ] as const) {
+      const operation = doc.paths?.[path]?.[method];
+      expect(operation).toBeDefined();
+      expect(operation?.parameters).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ in: "header", name: "x-project-id" })])
+      );
+    }
+  });
+
   it("documents API key and Clerk access for shared private-channel operations", () => {
     const doc = createOpenApiDocument();
     for (const [path, method] of [
@@ -114,12 +131,12 @@ describe("OpenAPI spec", () => {
       ["/v1/projects/{projectId}/api-keys", "post"],
       ["/v1/projects/{projectId}/members", "get"],
       ["/v1/projects/{projectId}/members", "post"],
-      ["/v1/projects/{projectId}/members/{memberId}", "patch"],
-      ["/v1/projects/{projectId}/members/{memberId}", "delete"],
       ["/v1/members", "get"],
+      ["/v1/members/me", "get"],
+      ["/v1/members/me", "delete"],
       ["/v1/members/invite", "post"],
-      ["/v1/members/accept", "post"],
       ["/v1/members/invitations/{invitationId}", "delete"],
+      ["/v1/members/{memberId}", "patch"],
       ["/v1/members/{memberId}", "delete"],
       ["/v1/organizations/{orgId}", "patch"],
       ["/v1/organizations/{orgId}", "delete"],
