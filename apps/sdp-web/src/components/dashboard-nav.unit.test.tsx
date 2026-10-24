@@ -62,7 +62,6 @@ function moreSheetMarkup(overrides: Partial<ComponentProps<typeof DashboardMoreS
   return renderToStaticMarkup(
     <DashboardMoreSheet
       pathname="/dashboard"
-      canManageOrgSettings={false}
       dvpEnabled={false}
       earnEnabled={false}
       heliusRingsEnabled={false}
@@ -312,6 +311,12 @@ describe("Removed Policies and Approvals navigation", () => {
     expect(markup).not.toContain("/policies");
     expect(markup).not.toContain("/approvals");
     expect(markup).toContain(`href="${SANDBOX_DASHBOARD}/api-keys"`);
+  });
+});
+
+describe("Settings in the mobile More sheet", () => {
+  it("links Settings for every member, with no capability gate", () => {
+    expect(moreSheetMarkup({})).toContain(`href="${SANDBOX_DASHBOARD}/settings"`);
   });
 });
 

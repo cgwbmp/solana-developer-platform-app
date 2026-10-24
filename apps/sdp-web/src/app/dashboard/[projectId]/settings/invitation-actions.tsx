@@ -13,6 +13,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { revokeInvitation } from "@/app/members/actions";
 import { useTranslations } from "@/i18n/provider";
+import { useActionIdempotencyKey } from "@/lib/use-action-idempotency-key";
 
 export function InvitationActions({
   invitationId,
@@ -27,6 +28,8 @@ export function InvitationActions({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [isRevoking, setIsRevoking] = useState(false);
+  // Kept across retries of one revocation, so a retry finishes its Clerk half.
+  const actionKey = useActionIdempotencyKey(null);
 
   const copyLink = async () => {
     if (!acceptUrl) return;
@@ -42,13 +45,16 @@ export function InvitationActions({
   };
 
   const revoke = () => {
+    const input = JSON.stringify(["revoke", invitationId]);
     setIsRevoking(true);
     startTransition(async () => {
-      const result = await revokeInvitation(invitationId);
+      const key = actionKey.keyFor(input);
+      const result = await revokeInvitation(invitationId, key);
+      actionKey.settled(input, key, result);
       setIsRevoking(false);
 
-      if (!result.ok) {
-        toast.error(t("Shared.members.revokeFailed", { error: result.error }));
+      if (result.status === "error") {
+        toast.error(t("Shared.members.revokeFailed", { error: result.message }));
         return;
       }
 
