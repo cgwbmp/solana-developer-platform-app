@@ -6,7 +6,7 @@
  */
 
 import { normalizeOrganizationRole, type OrganizationRole } from "@sdp/types/roles";
-import type { Context, Next } from "hono";
+import type { Context, ContextVariableMap, Next } from "hono";
 import { getDb } from "@/db/client";
 import { runWithSystemDatabaseIdentity, runWithTenantDatabaseIdentity } from "@/db/identity";
 import {
@@ -17,7 +17,7 @@ import {
   resolveClerkOrganizationClaims,
   verifyClerkSessionToken,
 } from "@/lib/clerk-token";
-import { AppError, internalError, unauthorized } from "@/lib/errors";
+import { AppError, badRequest, internalError, unauthorized } from "@/lib/errors";
 import { runAsMoneyPrincipal } from "@/lib/money-principal";
 import { organizationNotActive, readActiveOrganizationSettings } from "@/lib/organization-access";
 import { recordOrganizationEntitlements } from "@/lib/production-entitlement";
@@ -26,6 +26,7 @@ import {
   ClerkUsersService,
   verifiedPrimaryEmailFromClerkUser,
 } from "@/services/clerk-users.service";
+import { findPendingInvitation } from "@/services/organization-membership.service";
 import type { Env } from "@/types/env";
 import { DASHBOARD_ACTOR_MAX_REQUESTS, enforceRateLimit } from "./rate-limit";
 
@@ -265,23 +266,17 @@ async function ensureMembership(
   }
 
   try {
-    const pendingInvite = await db
-      .prepare(
-        `SELECT id, role, expires_at
-         FROM invitations
-         WHERE organization_id = ? AND email = ? AND status = 'pending'
-         ORDER BY created_at DESC
-         LIMIT 1`
-      )
-      .bind(params.organizationId, params.email.toLowerCase())
-      .first<{ id: string; role: string; expires_at: string }>();
+    const pendingInvite = await findPendingInvitation(db, {
+      organizationId: params.organizationId,
+      email: params.email,
+    });
 
     // Admission comes only from an SDP invitation (ADR 0012): the Clerk
     // membership that let this token name the organization grants nothing.
     if (!pendingInvite) {
       throw unauthorized("No pending invitation to this organization");
     }
-    if (new Date(pendingInvite.expires_at) < new Date()) {
+    if (new Date(pendingInvite.expiresAt) < new Date()) {
       await db
         .prepare("UPDATE invitations SET status = 'expired' WHERE id = ? AND status = 'pending'")
         .bind(pendingInvite.id)
@@ -289,7 +284,7 @@ async function ensureMembership(
       throw unauthorized("Invitation to this organization has expired");
     }
 
-    const role = normalizeOrganizationRole(pendingInvite.role);
+    const role = pendingInvite.role;
     const memberId = `mem_${crypto.randomUUID()}`;
 
     // The claim, the membership, its project memberships and the audit record
@@ -466,7 +461,6 @@ async function buildClerkContext(c: Context<{ Bindings: Env }>, payload: ClerkJw
       clerkOrgId: organizationClaims.organizationId,
       email: resolvedEmail,
       orgSlug: organizationClaims.organizationSlug ?? existingContext.org_slug,
-      orgRole: organizationClaims.organizationRole,
     };
   }
 
@@ -486,7 +480,6 @@ async function buildClerkContext(c: Context<{ Bindings: Env }>, payload: ClerkJw
     clerkOrgId: organizationClaims.organizationId,
     email: userIdentity.email,
     orgSlug: organizationClaims.organizationSlug ?? knownOrganization.slug,
-    orgRole: organizationClaims.organizationRole,
   };
 }
 
@@ -547,6 +540,63 @@ export function clerkAuthMiddleware() {
 
     await runAsSignedInMember(clerkContext, next);
   };
+}
+
+/**
+ * Authenticates a verified Clerk session that names no organization, for the
+ * one route that creates a person's organization (ADR 0012): a new person has
+ * no organization yet, so the member middleware refuses them. The rest of the
+ * request runs under a system database identity, since it writes the
+ * organization before any tenant exists.
+ *
+ * @returns The middleware.
+ */
+export function clerkSignupSessionMiddleware() {
+  return async (c: Context<{ Bindings: Env }>, next: Next) => {
+    await runWithSystemDatabaseIdentity("http:organization-signup", async () => {
+      const token = extractBearerToken(c);
+      if (!token) {
+        throw unauthorized("Clerk session required");
+      }
+      const payload = await verifyClerkSessionToken(c, token);
+      if (!payload.sub) {
+        throw unauthorized("Clerk token missing subject");
+      }
+      if (resolveClerkOrganizationClaims(payload).organizationId) {
+        throw badRequest("Clear the active organization before creating one");
+      }
+      const email = resolveClerkEmail(payload);
+      if (!email) {
+        throw unauthorized("Clerk token has no usable email claim");
+      }
+      // Limited before anything is written: provisioning the user is itself a write.
+      await enforceRateLimit(
+        c,
+        `clerk:${payload.sub}:organization-signup`,
+        DASHBOARD_ACTOR_MAX_REQUESTS
+      );
+      const user = await ensureClerkUser(c.env, getDb(c.env), payload.sub, email);
+      c.set("clerkSignup", { userId: user.userId, clerkUserId: payload.sub, email: user.email });
+      await next();
+    });
+  };
+}
+
+/**
+ * The signed-in person with no organization that `clerkSignupSessionMiddleware`
+ * authenticated.
+ *
+ * @param c - The request context.
+ * @returns The person.
+ */
+export function requireClerkSignup(
+  c: Context<{ Bindings: Env }>
+): NonNullable<ContextVariableMap["clerkSignup"]> {
+  const signup = c.get("clerkSignup");
+  if (!signup) {
+    throw internalError("Route has no signup session step");
+  }
+  return signup;
 }
 
 export function optionalClerkAuth(options: { rejectInvalid?: boolean } = {}) {

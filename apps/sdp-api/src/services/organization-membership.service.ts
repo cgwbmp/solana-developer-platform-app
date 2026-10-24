@@ -9,6 +9,12 @@ export type MembershipChange =
   | { kind: "remove"; memberId: string }
   | { kind: "leave" };
 
+const membershipTargetSchema = z.object({
+  id: z.string(),
+  user_id: z.string(),
+  status: z.enum(MEMBER_STATUSES),
+});
+
 const lockedMemberSchema = z.object({
   id: z.string(),
   user_id: z.string(),
@@ -36,23 +42,24 @@ export async function applyMembershipChange(
 ): Promise<{ memberId: string; userId: string; previousRole: OrganizationRole; changed: boolean }> {
   const { organizationId, actorUserId, change } = params;
 
-  const target =
+  const targetRow =
     change.kind === "leave"
       ? await tx
           .prepare(
             "SELECT id, user_id, status FROM organization_members WHERE organization_id = ? AND user_id = ?"
           )
           .bind(organizationId, actorUserId)
-          .first<{ id: string; user_id: string; status: string }>()
+          .first<Record<string, unknown>>()
       : await tx
           .prepare(
             "SELECT id, user_id, status FROM organization_members WHERE organization_id = ? AND id = ?"
           )
           .bind(organizationId, change.memberId)
-          .first<{ id: string; user_id: string; status: string }>();
-  if (!target) {
+          .first<Record<string, unknown>>();
+  if (!targetRow) {
     throw notFound("Member");
   }
+  const target = membershipTargetSchema.parse(targetRow);
 
   // Invitations lock before memberships, the order admission and organization
   // deletion take them. A pending invitation outliving a removal would readmit
@@ -155,6 +162,107 @@ export async function applyMembershipChange(
 }
 
 /**
+ * Mirrors a membership Clerk no longer holds into SDP as a removal: an operator
+ * deleted it in the Clerk Dashboard, or deleted the person's Clerk user
+ * (ADR 0012). It only ever takes access away, and skips the actor and
+ * last-admin rules because the operator already decided in Clerk. A membership
+ * not yet removed ends with its project memberships, and the person's pending
+ * invitations are revoked even when they were never admitted, so a deletion
+ * before their first sign-in still keeps them out. A membership already removed
+ * changes nothing: that is SDP's own removal coming back from Clerk, and an
+ * invitation raised since must survive it. An active membership is removed
+ * only if Clerk still lacks it once the row is locked: a re-admission that
+ * committed after the caller's earlier Clerk read holds a new Clerk membership,
+ * possibly under another Clerk user linked to the same person, and one that has
+ * not committed waits behind the lock.
+ *
+ * @param tx - An open transaction.
+ * @param params.organizationId - The organization.
+ * @param params.userId - The person Clerk no longer lists.
+ * @param params.heldInClerk - Reads, through the open transaction, whether Clerk lists the person in the organization now.
+ * @returns The membership removed, or null when none was, and how many invitations were revoked.
+ */
+export async function mirrorClerkMembershipDeletion(
+  tx: DatabaseExecutor,
+  params: {
+    organizationId: string;
+    userId: string;
+    heldInClerk: (tx: DatabaseExecutor) => Promise<boolean>;
+  }
+): Promise<{ removedMemberId: string | null; revokedInvitations: number }> {
+  const { organizationId, userId } = params;
+
+  const targetRow = await tx
+    .prepare(
+      "SELECT id, user_id, status FROM organization_members WHERE organization_id = ? AND user_id = ?"
+    )
+    .bind(organizationId, userId)
+    .first<Record<string, unknown>>();
+  const target = targetRow ? membershipTargetSchema.parse(targetRow) : null;
+  if (target !== null && target.status === "removed") {
+    return { removedMemberId: null, revokedInvitations: 0 };
+  }
+
+  // Invitations lock before memberships, the order admission takes them. The
+  // membership is read again once locked even when none existed: a sign-in
+  // holding the invitation may have admitted the person in between.
+  const revokedInvitations = await revokePendingInvitations(tx, organizationId, userId);
+  const lockedRow = await tx
+    .prepare(
+      "SELECT id, user_id, status FROM organization_members WHERE organization_id = ? AND user_id = ? FOR UPDATE"
+    )
+    .bind(organizationId, userId)
+    .first<Record<string, unknown>>();
+  if (!lockedRow) {
+    return { removedMemberId: null, revokedInvitations };
+  }
+  const member = membershipTargetSchema.parse(lockedRow);
+  if (member.status === "removed" || (await params.heldInClerk(tx))) {
+    return { removedMemberId: null, revokedInvitations };
+  }
+  await removeMembership(tx, organizationId, member);
+  return { removedMemberId: member.id, revokedInvitations };
+}
+
+const pendingInvitationSchema = z.object({
+  id: z.string(),
+  role: z.string().transform(normalizeOrganizationRole),
+  expires_at: z.string(),
+});
+
+/**
+ * The newest pending invitation of an address to the organization, the one
+ * sign-in admits from (ADR 0012). Every read that decides whether a person
+ * without an active membership may proceed goes through this, so they cannot
+ * disagree.
+ *
+ * @param db - The database or open transaction.
+ * @param params.organizationId - The organization.
+ * @param params.email - The address, in any letter case.
+ * @returns The invitation, expired or not, or null when there is none.
+ */
+export async function findPendingInvitation(
+  db: DatabaseExecutor,
+  params: { organizationId: string; email: string }
+): Promise<{ id: string; role: OrganizationRole; expiresAt: string } | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, role, expires_at
+         FROM invitations
+        WHERE organization_id = ? AND LOWER(email) = ? AND status = 'pending'
+        ORDER BY created_at DESC
+        LIMIT 1`
+    )
+    .bind(params.organizationId, params.email.toLowerCase())
+    .first<Record<string, unknown>>();
+  if (!row) {
+    return null;
+  }
+  const invitation = pendingInvitationSchema.parse(row);
+  return { id: invitation.id, role: invitation.role, expiresAt: invitation.expires_at };
+}
+
+/**
  * Revokes the person's pending invitations to the organization, matched on
  * every email SDP holds for them, since any of them could become the verified
  * email a later sign-in is admitted on.
@@ -162,31 +270,18 @@ export async function applyMembershipChange(
  * @param tx - The open transaction.
  * @param organizationId - The organization the invitations are for.
  * @param userId - The person being removed.
+ * @returns How many invitations were revoked.
  */
 async function revokePendingInvitations(
   tx: DatabaseExecutor,
   organizationId: string,
   userId: string
-): Promise<void> {
-  const emailRows = await tx
-    .prepare(
-      `SELECT email FROM users WHERE id = ?
-       UNION
-       SELECT email FROM auth_user_identities WHERE user_id = ? AND email IS NOT NULL`
-    )
-    .bind(userId, userId)
-    .all<{ email: string | null }>();
-  const emails = [
-    ...new Set(
-      emailRows.results
-        .map((row) => row.email?.trim().toLowerCase())
-        .filter((email): email is string => Boolean(email))
-    ),
-  ];
+): Promise<number> {
+  const emails = await personEmails(tx, userId);
   if (emails.length === 0) {
-    return;
+    return 0;
   }
-  await tx
+  return tx
     .prepare(
       `UPDATE invitations SET status = 'revoked'
         WHERE organization_id = ? AND status = 'pending'
@@ -194,6 +289,62 @@ async function revokePendingInvitations(
     )
     .bind(organizationId, ...emails)
     .run();
+}
+
+/**
+ * Every organization a deleted Clerk user still reaches: one where their
+ * membership is not removed, or one holding a pending invitation to any email
+ * SDP has for them (someone deleted before their first sign-in).
+ *
+ * @param db - The database.
+ * @param userId - The person.
+ * @returns The organization ids.
+ */
+export async function organizationsReachingPerson(
+  db: DatabaseExecutor,
+  userId: string
+): Promise<string[]> {
+  const emails = await personEmails(db, userId);
+  const invited =
+    emails.length === 0
+      ? ""
+      : `UNION
+         SELECT organization_id FROM invitations
+          WHERE status = 'pending' AND LOWER(email) IN (${emails.map(() => "?").join(", ")})`;
+  const rows = await db
+    .prepare(
+      `SELECT organization_id FROM organization_members WHERE user_id = ? AND status <> 'removed'
+       ${invited}`
+    )
+    .bind(userId, ...emails)
+    .all<{ organization_id: string }>();
+  return rows.results.map((row) => row.organization_id);
+}
+
+/**
+ * Every email SDP holds for the person, lowercased, since any of them could
+ * become the verified email a later sign-in is admitted on.
+ *
+ * @param db - The database or open transaction.
+ * @param userId - The person.
+ * @returns The distinct addresses.
+ */
+async function personEmails(db: DatabaseExecutor, userId: string): Promise<string[]> {
+  const emailRows = await db
+    .prepare(
+      `SELECT email FROM users WHERE id = ?
+       UNION
+       SELECT email FROM auth_user_identities WHERE user_id = ? AND email IS NOT NULL`
+    )
+    .bind(userId, userId)
+    .all<{ email: string | null }>();
+  return [
+    ...new Set(
+      emailRows.results
+        .map((row) => row.email?.trim().toLowerCase())
+        .filter((email): email is string => Boolean(email))
+    ),
+  ];
 }
 
 /**

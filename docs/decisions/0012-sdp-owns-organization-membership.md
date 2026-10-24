@@ -37,10 +37,18 @@ calls admin can always write memberships.
   Clerk checks a named inviter's org permissions even on Backend API calls, so
   an `org:member` inviter is refused. User-created organizations are disabled
   in Clerk.
-- **Clerk may take access away, never grant it.** Webhooks that delete a
-  membership or a user are mirrored into SDP; webhooks that create a
-  membership or change a role are ignored. A Clerk membership with no SDP
-  admission behind it is refused at sign-in.
+- **Clerk events never grant membership.** The dashboard exposes no Clerk
+  organization UI, so membership creations and updates in Clerk are SDP's own
+  writes coming back: they are logged and change nothing. A Clerk membership
+  with no SDP admission behind it is refused at sign-in. Deletions are the one
+  exception, because an operator can still take access away in the Clerk
+  Dashboard: a membership or user deletion is mirrored as a removal that only
+  ever ends access, and only when a fresh read shows Clerk no longer holds the
+  membership. SDP's own removals coming back find it already removed and change
+  nothing. Organization deletion is still mirrored, and
+  organization updates sync only entitlements (Clerk private metadata) from a
+  fresh Backend API read, never from the event payload. SDP owns the name and
+  slug and pushes a rename to Clerk.
 - **Admission happens only in SDP**: creating an organization (the creator
   becomes its first admin) or the first sign-in matching a pending SDP
   invitation. Admission grants both default projects once; nothing re-grants

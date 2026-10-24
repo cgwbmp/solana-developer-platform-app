@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { AppError } from "@/lib/errors";
 import { logVendorCallFailure } from "@/runtime/vendor-calls";
 import type { Env } from "@/types/env";
@@ -18,9 +19,22 @@ export interface ClerkOrganizationInvitation {
 export interface ClerkOrganization {
   id: string;
   name?: string;
-  slug?: string;
+  slug?: string | null;
   private_metadata?: Record<string, unknown> | null;
 }
+
+const clerkOrganizationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  slug: z.string().nullable(),
+  private_metadata: z.record(z.string(), z.unknown()).nullable(),
+});
+
+/**
+ * Bounds every Backend API call: organization creation holds a row lock across
+ * its Clerk calls, so a hung one must fail rather than hold the connection.
+ */
+const CLERK_REQUEST_TIMEOUT_MS = 10_000;
 
 export class ClerkOrganizationsService {
   private apiBase: string;
@@ -39,6 +53,7 @@ export class ClerkOrganizationsService {
     const startedAt = Date.now();
     const res = await fetch(`${this.apiBase}${path}`, {
       ...options,
+      signal: AbortSignal.timeout(CLERK_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.secretKey}`,
         "Content-Type": "application/json",
@@ -84,14 +99,14 @@ export class ClerkOrganizationsService {
    * @param params.organizationId - The Clerk organization id.
    * @param params.emailAddress - The address to invite.
    * @param params.expiresInDays - How long Clerk's link lives; matches the SDP invitation.
-   * @param params.redirectUrl - Where Clerk sends the person after accepting, when set.
+   * @param params.redirectUrl - Where Clerk's link lands: the dashboard's sign-in page.
    * @returns The Clerk invitation.
    */
   async createOrganizationInvitation(params: {
     organizationId: string;
     emailAddress: string;
     expiresInDays: number;
-    redirectUrl: string | undefined;
+    redirectUrl: string;
   }): Promise<ClerkOrganizationInvitation> {
     const payload = {
       email_address: params.emailAddress,
@@ -155,6 +170,99 @@ export class ClerkOrganizationsService {
       `/organizations/${params.organizationId}/invitations/${params.invitationId}/revoke`,
       { method: "POST" }
     );
+  }
+
+  /**
+   * Reads the organization as Clerk holds it now, so a sync never applies an
+   * older webhook payload over a newer state.
+   *
+   * @param organizationId - The Clerk organization id.
+   * @returns The organization, or null once Clerk no longer has it.
+   */
+  async getOrganization(organizationId: string): Promise<ClerkOrganization | null> {
+    try {
+      const organization = await this.request<unknown>(`/organizations/${organizationId}`);
+      return clerkOrganizationSchema.parse(organization);
+    } catch (error) {
+      if (error instanceof AppError && error.details?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Renames the Clerk organization to the name SDP holds.
+   *
+   * @param params.organizationId - The Clerk organization id.
+   * @param params.name - The organization's name.
+   */
+  async updateOrganizationName(params: { organizationId: string; name: string }): Promise<void> {
+    await this.request<unknown>(`/organizations/${params.organizationId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: params.name }),
+    });
+  }
+
+  /**
+   * Creates a Clerk organization naming no creator (ADR 0012): Clerk would
+   * otherwise make that person its `org:admin`. The SDP organization id rides
+   * in private metadata so an operator can trace an orphan back.
+   *
+   * @param params.name - The organization's name.
+   * @param params.sdpOrganizationId - The SDP organization it stands for.
+   * @returns The Clerk organization id.
+   */
+  async createOrganization(params: { name: string; sdpOrganizationId: string }): Promise<string> {
+    const created = await this.request<unknown>("/organizations", {
+      method: "POST",
+      body: JSON.stringify({
+        name: params.name,
+        private_metadata: { sdpOrganizationId: params.sdpOrganizationId },
+      }),
+    });
+    return z.object({ id: z.string() }).parse(created).id;
+  }
+
+  /**
+   * Whether the user already holds a membership of the Clerk organization.
+   *
+   * @param params.organizationId - The Clerk organization id.
+   * @param params.userId - The Clerk user id.
+   * @returns True when Clerk lists a membership for the user; false when it lists none or the organization no longer exists.
+   */
+  async hasOrganizationMembership(params: {
+    organizationId: string;
+    userId: string;
+  }): Promise<boolean> {
+    try {
+      const page = await this.request<unknown>(
+        `/organizations/${params.organizationId}/memberships?user_id=${encodeURIComponent(params.userId)}`
+      );
+      return z.object({ total_count: z.number() }).parse(page).total_count > 0;
+    } catch (error) {
+      if (error instanceof AppError && error.details?.status === 404) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Adds the user to the Clerk organization as `org:member`, the only Clerk
+   * role anyone holds (ADR 0012).
+   *
+   * @param params.organizationId - The Clerk organization id.
+   * @param params.userId - The Clerk user id.
+   */
+  async createOrganizationMembership(params: {
+    organizationId: string;
+    userId: string;
+  }): Promise<void> {
+    await this.request<unknown>(`/organizations/${params.organizationId}/memberships`, {
+      method: "POST",
+      body: JSON.stringify({ user_id: params.userId, role: "org:member" }),
+    });
   }
 
   async deleteOrganizationMembership(params: {

@@ -1,10 +1,11 @@
 import { hashString } from "@sdp/payments/hash";
 import type { Organization } from "@sdp/types/organizations";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import { app } from "@/index";
 import { ALL_API_KEY_GRANTS, TEST_API_KEY, TEST_SEEDED_API_KEY } from "@/test/fixtures/api-keys";
 import { TEST_MEMBER, TEST_ORG, TEST_USER } from "@/test/fixtures/organizations";
+import { stubClerkBackend } from "@/test/helpers/clerk-backend";
 import { signSeededClerkMember } from "@/test/helpers/clerk-member";
 import { env } from "@/test/helpers/env";
 import { seedDefaultProjects } from "@/test/helpers/projects";
@@ -51,25 +52,6 @@ describe("Organizations routes", () => {
   afterEach(async () => {
     await clearKVStores(env);
   });
-  describe("POST /v1/organizations", () => {
-    it("does not expose local organization self-registration", async () => {
-      const res = await app.request(
-        "/v1/organizations",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: "New Org",
-            email: "new@example.com",
-          }),
-        },
-        env
-      );
-      expect(res.status).toBe(404);
-    });
-  });
   describe("GET /v1/organizations/:orgId", () => {
     beforeEach(async () => {
       await getDb(env)
@@ -95,6 +77,34 @@ describe("Organizations routes", () => {
       expect(body.data.id).toBe(TEST_ORG.id);
       expect(body.data.name).toBe(TEST_ORG.name);
       expect(body.data.slug).toBe(TEST_ORG.slug);
+    });
+    it("answers only the settings fields SDP defines, never a stored retired webhookSecret", async () => {
+      await getDb(env)
+        .prepare("UPDATE organizations SET settings = ? WHERE id = ?")
+        .bind(
+          JSON.stringify({ defaultEnvironment: "production", webhookSecret: "whsec_synthetic" }),
+          TEST_ORG.id
+        )
+        .run();
+      const res = await app.request(
+        `/v1/organizations/${TEST_ORG.id}`,
+        { headers: { Authorization: `Bearer ${TEST_API_KEY.raw}` } },
+        env
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({
+        data: {
+          id: TEST_ORG.id,
+          name: TEST_ORG.name,
+          slug: TEST_ORG.slug,
+          tier: TEST_ORG.tier,
+          status: TEST_ORG.status,
+          settings: { defaultEnvironment: "production" },
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+        },
+        meta: { requestId: expect.any(String), timestamp: expect.any(String) },
+      });
     });
     it("returns internal error when organization tier is invalid in storage", async () => {
       await getDb(env)
@@ -188,7 +198,14 @@ describe("Organizations routes", () => {
         .run();
       await seedOrganizationMember("admin");
     });
-    it("updates organization name", async () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      env.CLERK_API_URL = undefined;
+      env.CLERK_SECRET_KEY = undefined;
+    });
+    it("commits a rename, then renames the Clerk organization to it", async () => {
+      const clerk = stubClerkBackend(env);
+      clerk.answer({ status: 200, body: { id: `clerk_org_${TEST_ORG.id}` } });
       const res = await app.request(
         `/v1/organizations/${TEST_ORG.id}`,
         {
@@ -204,12 +221,26 @@ describe("Organizations routes", () => {
         env
       );
       expect(res.status).toBe(200);
-      const body = (await res.json()) as {
+      expect(await res.json()).toEqual({
         data: {
-          name: string;
-        };
-      };
-      expect(body.data.name).toBe("Updated Name");
+          id: TEST_ORG.id,
+          name: "Updated Name",
+          slug: TEST_ORG.slug,
+          tier: TEST_ORG.tier,
+          status: TEST_ORG.status,
+          settings: null,
+          createdAt: expect.any(String),
+          updatedAt: expect.any(String),
+        },
+        meta: { requestId: expect.any(String), timestamp: expect.any(String) },
+      });
+      expect(clerk.requests).toEqual([
+        {
+          method: "PATCH",
+          path: `/organizations/clerk_org_${TEST_ORG.id}`,
+          body: { name: "Updated Name" },
+        },
+      ]);
     });
     it("updates organization settings", async () => {
       const res = await app.request(

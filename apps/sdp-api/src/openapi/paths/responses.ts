@@ -72,6 +72,7 @@ import {
 } from "@/openapi/schemas/issuance";
 import { onboardingStatusResponseSchema } from "@/openapi/schemas/onboarding";
 import {
+  createOrganizationResponseSchema,
   inviteMemberResponseSchema,
   listMembersResponseSchema,
   memberRoleSchema,
@@ -105,12 +106,12 @@ import {
   listProjectApiKeysResponseSchema,
   listProjectMembersResponseSchema,
   listProjectsResponseSchema,
-  projectMemberResponseSchema,
   projectProviderAvailabilityResponseSchema,
   projectResponseSchema,
 } from "@/openapi/schemas/projects";
 
 export const organizationResponse = successResponseSchema(organizationSchema);
+export const createOrganizationResponse = successResponseSchema(createOrganizationResponseSchema);
 
 export const listMembersResponse = successResponseSchema(listMembersResponseSchema);
 export const inviteMemberResponse = successResponseSchema(inviteMemberResponseSchema);
@@ -155,7 +156,6 @@ export const listCounterpartyProviderAccountsResponse = successResponseSchema(
 export const projectResponse = successResponseSchema(projectResponseSchema);
 export const listProjectsResponse = successResponseSchema(listProjectsResponseSchema);
 export const listProjectMembersResponse = successResponseSchema(listProjectMembersResponseSchema);
-export const projectMemberResponse = successResponseSchema(projectMemberResponseSchema);
 export const listProjectApiKeysResponse = successResponseSchema(listProjectApiKeysResponseSchema);
 /**
  * The project provider availability envelope, with or without the Earn family.

@@ -36,7 +36,6 @@ function clerkContext(userId: string) {
     clerkOrgId: "clerk_org_metered",
     email: null,
     orgSlug: null,
-    orgRole: null,
   };
 }
 

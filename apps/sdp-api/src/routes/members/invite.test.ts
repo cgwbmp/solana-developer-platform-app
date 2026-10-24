@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { app } from "@/index";
+import { ClerkOrganizationsService } from "@/services/clerk-organizations.service";
 import { readAuditActions } from "@/test/helpers/audit-logs";
 import { clerkHeaders } from "@/test/helpers/clerk";
 import { type ClerkBackend, stubClerkBackend } from "@/test/helpers/clerk-backend";
@@ -25,6 +26,12 @@ const ADMIN = organizationMember("invite_admin", "admin");
 const INVITEE_EMAIL = "invitee@example.com";
 const CLERK_INVITATION_ID = "orginv_invite_created";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const CLERK_INVITATION_BODY = {
+  email_address: INVITEE_EMAIL,
+  role: "org:member",
+  expires_in_days: 7,
+  redirect_url: "https://dash.example.test/sign-in",
+};
 const SEAT_HOLDERS = Array.from({ length: 18 }, (_, index) =>
   organizationMember(`invite_seat_${index}`, "member")
 );
@@ -94,6 +101,7 @@ describe("POST /v1/members/invite", () => {
     sandboxProjectId = projects.sandbox.id;
     adminToken = await signSeededClerkMember(env, db, ADMIN.userId, ORGANIZATION.id);
     clerk = stubClerkBackend(env);
+    env.FRONTEND_URL = "https://dash.example.test/app/";
   });
 
   afterEach(async () => {
@@ -104,62 +112,62 @@ describe("POST /v1/members/invite", () => {
     env.FRONTEND_URL = undefined;
   });
 
-  it.each([
-    {
-      frontendUrl: "https://dashboard.example.test/",
-      clerkBody: {
-        email_address: INVITEE_EMAIL,
-        role: "org:member",
-        expires_in_days: 7,
-        redirect_url: "https://dashboard.example.test/dashboard/settings",
+  it("claims the address, audits it, then invites in Clerk as org:member landing on the dashboard origin's sign-in page", async () => {
+    clerk.answer({ status: 200, body: { id: CLERK_INVITATION_ID, status: "pending" } });
+
+    const before = Date.now();
+    const response = await invite("Invitee@Example.com");
+    const after = Date.now();
+
+    expect(response.status).toBe(201);
+    expect(clerk.requests).toEqual([
+      {
+        method: "POST",
+        path: `/organizations/${CLERK_ORG_ID}/invitations`,
+        body: CLERK_INVITATION_BODY,
       },
-    },
-    {
-      frontendUrl: undefined,
-      clerkBody: { email_address: INVITEE_EMAIL, role: "org:member", expires_in_days: 7 },
-    },
-  ])(
-    "claims the address, audits it, then invites in Clerk as org:member (FRONTEND_URL $frontendUrl)",
-    async ({ frontendUrl, clerkBody }) => {
-      env.FRONTEND_URL = frontendUrl;
-      clerk.answer({ status: 200, body: { id: CLERK_INVITATION_ID, status: "pending" } });
-
-      const before = Date.now();
-      const response = await invite("Invitee@Example.com");
-      const after = Date.now();
-
-      expect(response.status).toBe(201);
-      expect(clerk.requests).toEqual([
-        { method: "POST", path: `/organizations/${CLERK_ORG_ID}/invitations`, body: clerkBody },
-      ]);
-      const rows = await invitationRows();
-      expect(rows).toHaveLength(1);
-      const [row] = rows;
-      expect(row).toMatchObject({
-        email: INVITEE_EMAIL,
-        role: "admin",
-        status: "pending",
-        clerk_invitation_id: CLERK_INVITATION_ID,
-      });
-      expect(Date.parse(row.expires_at)).toBeGreaterThanOrEqual(before + SEVEN_DAYS_MS);
-      expect(Date.parse(row.expires_at)).toBeLessThanOrEqual(after + SEVEN_DAYS_MS);
-      expect(await response.json()).toEqual({
-        data: {
-          invitation: {
-            id: row.id,
-            email: INVITEE_EMAIL,
-            role: "admin",
-            expiresAt: row.expires_at,
-            clerkInvitationId: CLERK_INVITATION_ID,
-          },
+    ]);
+    const rows = await invitationRows();
+    expect(rows).toHaveLength(1);
+    const [row] = rows;
+    expect(row).toMatchObject({
+      email: INVITEE_EMAIL,
+      role: "admin",
+      status: "pending",
+      clerk_invitation_id: CLERK_INVITATION_ID,
+    });
+    expect(Date.parse(row.expires_at)).toBeGreaterThanOrEqual(before + SEVEN_DAYS_MS);
+    expect(Date.parse(row.expires_at)).toBeLessThanOrEqual(after + SEVEN_DAYS_MS);
+    expect(await response.json()).toEqual({
+      data: {
+        invitation: {
+          id: row.id,
+          email: INVITEE_EMAIL,
+          role: "admin",
+          expiresAt: row.expires_at,
+          clerkInvitationId: CLERK_INVITATION_ID,
         },
-        meta: { requestId: expect.any(String), timestamp: expect.any(String) },
-      });
-      expect(await readAuditActions(getDb(env), { type: "invitation", id: row.id })).toEqual([
-        "invite",
-      ]);
-    }
-  );
+      },
+      meta: { requestId: expect.any(String), timestamp: expect.any(String) },
+    });
+    expect(await readAuditActions(getDb(env), { type: "invitation", id: row.id })).toEqual([
+      "invite",
+    ]);
+  });
+
+  it("refuses before claiming the address or calling Clerk when FRONTEND_URL is unset", async () => {
+    env.FRONTEND_URL = undefined;
+
+    const response = await invite(INVITEE_EMAIL);
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: { code: "INTERNAL_ERROR", message: "FRONTEND_URL is required to send invitations" },
+      meta: { requestId: expect.any(String) },
+    });
+    expect(clerk.requests).toEqual([]);
+    expect(await invitationRows()).toEqual([]);
+  });
 
   it("refuses a second pending invitation to the address in another letter case before any Clerk call", async () => {
     await seedPendingInvitation("inv_invite_existing", "Invitee@Example.COM", 7);
@@ -229,5 +237,90 @@ describe("POST /v1/members/invite", () => {
         clerk_invitation_id: null,
       }),
     ]);
+  });
+
+  it("withdraws the Clerk invitation it created when the invitation was revoked while Clerk was inviting", async () => {
+    const createInvitation = ClerkOrganizationsService.prototype.createOrganizationInvitation;
+    vi.spyOn(
+      ClerkOrganizationsService.prototype,
+      "createOrganizationInvitation"
+    ).mockImplementation(async function (this: ClerkOrganizationsService, params) {
+      await getDb(env).execute(
+        "UPDATE invitations SET status = 'revoked' WHERE organization_id = ?",
+        [ORGANIZATION.id]
+      );
+      return createInvitation.call(this, params);
+    });
+    clerk.answer(
+      { status: 200, body: { id: CLERK_INVITATION_ID, status: "pending" } },
+      { status: 200, body: { id: CLERK_INVITATION_ID, status: "revoked" } }
+    );
+
+    const response = await invite(INVITEE_EMAIL);
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: { code: "CONFLICT", message: "The invitation was revoked while it was being sent" },
+      meta: { requestId: expect.any(String) },
+    });
+    expect(clerk.requests).toEqual([
+      {
+        method: "POST",
+        path: `/organizations/${CLERK_ORG_ID}/invitations`,
+        body: CLERK_INVITATION_BODY,
+      },
+      {
+        method: "POST",
+        path: `/organizations/${CLERK_ORG_ID}/invitations/${CLERK_INVITATION_ID}/revoke`,
+        body: null,
+      },
+    ]);
+    expect(await invitationRows()).toEqual([
+      expect.objectContaining({
+        email: INVITEE_EMAIL,
+        status: "revoked",
+        clerk_invitation_id: null,
+      }),
+    ]);
+  });
+
+  it("completes the invite without withdrawing the Clerk invitation when a sign-in accepted it while Clerk was inviting", async () => {
+    const createInvitation = ClerkOrganizationsService.prototype.createOrganizationInvitation;
+    vi.spyOn(
+      ClerkOrganizationsService.prototype,
+      "createOrganizationInvitation"
+    ).mockImplementation(async function (this: ClerkOrganizationsService, params) {
+      await getDb(env).execute(
+        "UPDATE invitations SET status = 'accepted' WHERE organization_id = ?",
+        [ORGANIZATION.id]
+      );
+      return createInvitation.call(this, params);
+    });
+    clerk.answer({ status: 200, body: { id: CLERK_INVITATION_ID, status: "pending" } });
+
+    const response = await invite(INVITEE_EMAIL);
+
+    expect(response.status).toBe(201);
+    expect(clerk.requests).toEqual([
+      {
+        method: "POST",
+        path: `/organizations/${CLERK_ORG_ID}/invitations`,
+        body: CLERK_INVITATION_BODY,
+      },
+    ]);
+    const [row] = await invitationRows();
+    expect(row.status).toBe("accepted");
+    expect(await response.json()).toEqual({
+      data: {
+        invitation: {
+          id: row.id,
+          email: INVITEE_EMAIL,
+          role: "admin",
+          expiresAt: row.expires_at,
+          clerkInvitationId: CLERK_INVITATION_ID,
+        },
+      },
+      meta: { requestId: expect.any(String), timestamp: expect.any(String) },
+    });
   });
 });

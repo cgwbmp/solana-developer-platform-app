@@ -1,9 +1,18 @@
+import { INVITATION_STATUSES } from "@sdp/types/organizations";
 import { normalizeOrganizationRole } from "@sdp/types/roles";
 import type { Context } from "hono";
+import { z } from "zod";
 import { getDb } from "@/db/client";
 import { isPostgresUniqueViolation } from "@/db/postgres-utils";
 import { createOrganizationRepository } from "@/db/repositories/repository-factory";
-import { AppError, badRequest, conflict, notFound, unauthorized } from "@/lib/errors";
+import {
+  AppError,
+  badRequest,
+  conflict,
+  internalError,
+  notFound,
+  unauthorized,
+} from "@/lib/errors";
 import { created, noContent, success } from "@/lib/response";
 import { getAuthorized } from "@/middleware/authorize";
 import { requireHumanActor } from "@/middleware/human-session";
@@ -11,12 +20,14 @@ import { callerMayPerform } from "@/middleware/require-action";
 import type { ValidatedBodyContext } from "@/middleware/validate";
 import { getLogger } from "@/runtime/logger";
 import { AuditService } from "@/services/audit.service";
+import { findClerkOrganizationId } from "@/services/clerk-organization-provisioning.service";
 import {
   type ClerkOrganizationInvitation,
   ClerkOrganizationsService,
 } from "@/services/clerk-organizations.service";
 import {
   applyMembershipChange,
+  findPendingInvitation,
   type MembershipChange,
 } from "@/services/organization-membership.service";
 import type { Env } from "@/types/env";
@@ -30,6 +41,9 @@ function resolveActor(c: AppContext): { organizationId: string; userId: string }
   return { organizationId: clerk.organizationId, userId: clerk.userId };
 }
 
+const seatCountSchema = z.object({ taken: z.coerce.number() });
+const invitationStatusSchema = z.object({ status: z.enum(INVITATION_STATUSES) });
+
 /** How long an invitation admits its address, in SDP and in Clerk's link alike. */
 const INVITATION_TTL_DAYS = 7;
 
@@ -38,19 +52,6 @@ const INVITATION_TTL_DAYS = 7;
  * counts its own membership limit: refusing here spends no Clerk call.
  */
 const MAX_ORGANIZATION_MEMBERS = 20;
-
-async function getClerkOrgId(db: DatabaseClient, organizationId: string): Promise<string | null> {
-  const row = await db
-    .prepare(
-      `SELECT provider_org_id
-       FROM auth_organization_identities
-       WHERE provider = 'clerk' AND organization_id = ?`
-    )
-    .bind(organizationId)
-    .first<{ provider_org_id: string }>();
-
-  return row?.provider_org_id ?? null;
-}
 
 /** Clerk user id for an SDP user, or null when they have no Clerk identity. */
 async function getClerkUserId(db: DatabaseClient, userId: string): Promise<string | null> {
@@ -66,14 +67,22 @@ async function getClerkUserId(db: DatabaseClient, userId: string): Promise<strin
   return row?.provider_user_id ?? null;
 }
 
-function resolveInviteRedirectUrl(env: Env): string | undefined {
-  const base = env.FRONTEND_URL?.replace(/\/$/, "");
-  if (!base) {
-    return undefined;
+/**
+ * Where Clerk's invitation link lands: the dashboard's sign-in page, whose
+ * Clerk component reads the ticket from its own URL and signs the invitee in,
+ * or sends a new person on to sign up with it. A protected page would bounce
+ * the invitee to sign-in with the ticket buried in a redirect parameter.
+ * Without a dashboard URL Clerk would fall back to its own hosted pages, so the
+ * invite is refused instead.
+ *
+ * @param env - The environment.
+ * @returns The sign-in URL on the dashboard's origin.
+ */
+function resolveInviteRedirectUrl(env: Env): string {
+  if (!env.FRONTEND_URL) {
+    throw internalError("FRONTEND_URL is required to send invitations");
   }
-  // Members live on the settings page. /members only redirects there, so
-  // pointing at it made every accepted invite take an extra hop.
-  return `${base}/dashboard/settings`;
+  return `${new URL(env.FRONTEND_URL).origin}/sign-in`;
 }
 
 /**
@@ -325,7 +334,7 @@ async function resolveClerkInvitations(
   organizationId: string
 ): Promise<ClerkOrganizationInvitation[]> {
   try {
-    const clerkOrgId = await getClerkOrgId(getDb(c.env), organizationId);
+    const clerkOrgId = await findClerkOrganizationId(getDb(c.env), organizationId);
     if (!clerkOrgId) {
       return [];
     }
@@ -365,11 +374,12 @@ export const inviteMember = async (c: ValidatedBodyContext<typeof inviteSchema>)
     throw conflict("User is already a member of this organization");
   }
 
-  const clerkOrgId = await getClerkOrgId(getDb(c.env), organizationId);
+  const clerkOrgId = await findClerkOrganizationId(getDb(c.env), organizationId);
   if (!clerkOrgId) {
     throw badRequest("Organization is not linked to Clerk");
   }
 
+  const redirectUrl = resolveInviteRedirectUrl(c.env);
   const invitationId = `inv_${crypto.randomUUID()}`;
   const now = new Date();
   const expiresAt = new Date(
@@ -403,8 +413,8 @@ export const inviteMember = async (c: ValidatedBodyContext<typeof inviteSchema>)
                     WHERE organization_id = ? AND status = 'pending' AND expires_at > ?) AS taken`
         )
         .bind(organizationId, organizationId, now.toISOString())
-        .first<{ taken: number }>();
-      if (Number(seats?.taken) >= MAX_ORGANIZATION_MEMBERS) {
+        .first<Record<string, unknown>>();
+      if (seatCountSchema.parse(seats).taken >= MAX_ORGANIZATION_MEMBERS) {
         throw conflict(
           `The organization has reached its limit of ${MAX_ORGANIZATION_MEMBERS} members, pending invitations included`
         );
@@ -445,21 +455,43 @@ export const inviteMember = async (c: ValidatedBodyContext<typeof inviteSchema>)
     throw error;
   }
 
-  const clerkInvitation = await new ClerkOrganizationsService(c.env).createOrganizationInvitation({
+  const clerk = new ClerkOrganizationsService(c.env);
+  const clerkInvitation = await clerk.createOrganizationInvitation({
     organizationId: clerkOrgId,
     emailAddress: normalizedEmail,
     expiresInDays: INVITATION_TTL_DAYS,
-    redirectUrl: resolveInviteRedirectUrl(c.env),
+    redirectUrl,
   });
 
   // Clerk's invitation id is the only key that identifies exactly one pending
-  // Clerk invitation, so revocation acts on it rather than on the address.
-  await getDb(c.env)
+  // Clerk invitation, so revocation acts on it rather than on the address. A
+  // revocation that committed while Clerk was inviting found nothing to revoke
+  // there, so the invitation it just created is withdrawn here.
+  const recorded = await getDb(c.env)
     .prepare(
-      "UPDATE invitations SET clerk_invitation_id = ? WHERE id = ? AND clerk_invitation_id IS NULL"
+      `UPDATE invitations SET clerk_invitation_id = ?
+        WHERE id = ? AND organization_id = ? AND status = 'pending' AND clerk_invitation_id IS NULL`
     )
-    .bind(clerkInvitation.id, invitationId)
+    .bind(clerkInvitation.id, invitationId, organizationId)
     .run();
+  // A sign-in can also accept the invitation while Clerk is inviting (a Clerk
+  // membership that survived a failed removal names the organization): the
+  // person joined, so the invite succeeded.
+  if (recorded === 0) {
+    const current = invitationStatusSchema.parse(
+      await getDb(c.env)
+        .prepare("SELECT status FROM invitations WHERE id = ? AND organization_id = ?")
+        .bind(invitationId, organizationId)
+        .first<Record<string, unknown>>()
+    );
+    if (current.status !== "accepted") {
+      await clerk.revokeOrganizationInvitation({
+        organizationId: clerkOrgId,
+        invitationId: clerkInvitation.id,
+      });
+      throw conflict("The invitation was revoked while it was being sent");
+    }
+  }
 
   return created(c, {
     invitation: {
@@ -531,6 +563,11 @@ export const removeMember = async (c: AppContext) => {
     actorUserId: userId,
     change: { kind: "remove", memberId: member.id },
   });
+  // A retry of a finished removal must not take the Clerk membership of a
+  // person re-invited since: accepting that invitation gave it back to them.
+  if (!removed.changed && (await holdsPendingInvitation(c, organizationId, removed.userId))) {
+    return noContent(c);
+  }
   await removeClerkMembership(c, organizationId, removed.userId);
   return noContent(c);
 };
@@ -567,7 +604,7 @@ async function endMembership(
     actorUserId: string;
     change: Extract<MembershipChange, { kind: "remove" | "leave" }>;
   }
-): Promise<{ memberId: string; userId: string }> {
+): Promise<{ memberId: string; userId: string; changed: boolean }> {
   return new AuditService(getDb(c.env)).logWithin(c, async (tx) => {
     const ended = await applyMembershipChange(tx, params);
     return {
@@ -581,9 +618,34 @@ async function endMembership(
             userId: params.actorUserId,
           }
         : null,
-      result: { memberId: ended.memberId, userId: ended.userId },
+      result: { memberId: ended.memberId, userId: ended.userId, changed: ended.changed },
     };
   });
+}
+
+/**
+ * Whether the person holds a pending invitation to the organization.
+ *
+ * @param c - The request context.
+ * @param organizationId - The organization.
+ * @param userId - The person.
+ * @returns True when an invitation to their address is pending.
+ */
+async function holdsPendingInvitation(
+  c: AppContext,
+  organizationId: string,
+  userId: string
+): Promise<boolean> {
+  const user = await getDb(c.env)
+    .prepare("SELECT email FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ email: string }>();
+  if (!user) {
+    throw notFound("User");
+  }
+  return (
+    (await findPendingInvitation(getDb(c.env), { organizationId, email: user.email })) !== null
+  );
 }
 
 /** An invitation of the caller's organization, as the revoke route's access check loads it. */
@@ -630,15 +692,18 @@ export const revokeInvitation = async (c: AppContext) => {
   // so only that half runs again.
   const revokedNow = await new AuditService(getDb(c.env)).logWithin(c, async (tx) => {
     const revoked = await tx
-      .prepare("UPDATE invitations SET status = 'revoked' WHERE id = ? AND status = 'pending'")
-      .bind(invitation.id)
+      .prepare(
+        `UPDATE invitations SET status = 'revoked'
+          WHERE id = ? AND organization_id = ? AND status = 'pending'`
+      )
+      .bind(invitation.id, organizationId)
       .run();
     if (revoked === 0) {
       const current = await tx
-        .prepare("SELECT status FROM invitations WHERE id = ?")
-        .bind(invitation.id)
-        .first<{ status: string }>();
-      if (current?.status !== "revoked") {
+        .prepare("SELECT status FROM invitations WHERE id = ? AND organization_id = ?")
+        .bind(invitation.id, organizationId)
+        .first<Record<string, unknown>>();
+      if (invitationStatusSchema.parse(current).status !== "revoked") {
         throw badRequest("Only a pending invitation can be revoked");
       }
       return { entry: null, result: false };
@@ -680,13 +745,38 @@ async function revokeClerkInvitations(
   organizationId: string,
   invitation: OrganizationInvitation
 ): Promise<void> {
-  const clerkOrgId = await getClerkOrgId(getDb(c.env), organizationId);
+  const clerkOrgId = await findClerkOrganizationId(getDb(c.env), organizationId);
   if (!clerkOrgId) {
     throw badRequest("Organization is not linked to Clerk");
   }
+  // A Clerk invitation another SDP invitation recorded is that invitation's,
+  // even when its address matches a row with no Clerk id of its own.
+  const recorded = await getDb(c.env)
+    .prepare(
+      `SELECT clerk_invitation_id FROM invitations
+        WHERE organization_id = ? AND id <> ? AND clerk_invitation_id IS NOT NULL`
+    )
+    .bind(organizationId, invitation.id)
+    .all<{ clerk_invitation_id: string }>();
+  const othersRecorded = new Set(recorded.results.map((row) => row.clerk_invitation_id));
+  // A row with no Clerk id matches by address, which is only safe while no
+  // other SDP invitation holds the address: a newer one may have created its
+  // Clerk invitation and not yet recorded the id.
+  if (invitation.clerk_invitation_id === null) {
+    const newer = await findPendingInvitation(getDb(c.env), {
+      organizationId,
+      email: invitation.email,
+    });
+    if (newer !== null) {
+      return;
+    }
+  }
   const clerkService = new ClerkOrganizationsService(c.env);
   const pending = await clerkService.listPendingOrganizationInvitations(clerkOrgId);
-  for (const match of pending.filter(matchesClerkInvitation(invitation))) {
+  const ours = pending
+    .filter(matchesClerkInvitation(invitation))
+    .filter((entry) => !othersRecorded.has(entry.id));
+  for (const match of ours) {
     await clerkService.revokeOrganizationInvitation({
       organizationId: clerkOrgId,
       invitationId: match.id,
@@ -708,7 +798,7 @@ async function removeClerkMembership(
   organizationId: string,
   userId: string
 ): Promise<void> {
-  const clerkOrgId = await getClerkOrgId(getDb(c.env), organizationId);
+  const clerkOrgId = await findClerkOrganizationId(getDb(c.env), organizationId);
   if (!clerkOrgId) {
     throw badRequest("Organization is not linked to Clerk");
   }
