@@ -41,6 +41,7 @@ import {
 import {
   type EarnDepositAvailabilityLabels,
   earnDepositAvailabilityLabel,
+  earnDetailLine,
   earnProviderLabel,
   formatProviderAmount,
   formatTokenValue,
@@ -56,10 +57,18 @@ import {
   sumDecimalStrings,
 } from "@/app/dashboard/[projectId]/markets/earn/earn-market-presentation";
 import {
+  EarnRowIdentity,
+  EarnSummary,
+} from "@/app/dashboard/[projectId]/markets/earn/earn-page-blocks";
+import {
   type EarnProviderAccess,
   earnVaultDepositAvailability,
   SURFACED_VAULT_DIRECT_EARN_PROVIDERS,
 } from "@/app/dashboard/[projectId]/markets/earn/earn-surfacing";
+import {
+  EARN_TABLE,
+  EARN_TABLE_FRAME,
+} from "@/app/dashboard/[projectId]/markets/earn/earn-table-layout";
 import { earnVaultHoldingValue } from "@/app/dashboard/[projectId]/markets/earn/earn-vault-holding";
 import type { EarnVaultParRedemptionSource } from "@/app/dashboard/[projectId]/markets/earn/earn-vault-par-redemption-modal";
 import {
@@ -70,8 +79,8 @@ import {
 } from "@/app/dashboard/[projectId]/markets/earn/earn-vault-ui-state";
 import { EarnVaultWithdrawalRequestsCard } from "@/app/dashboard/[projectId]/markets/earn/earn-vault-withdrawal-requests-card";
 import {
-  TreasurySummarySkeleton,
-  TreasuryTableSkeleton,
+  EarnSummarySkeleton,
+  EarnTableSkeleton,
   TreasuryWalletTilesSkeleton,
 } from "@/app/dashboard/[projectId]/markets/markets-route-skeletons";
 import {
@@ -79,7 +88,6 @@ import {
   PAYMENTS_TABLE_HEAD,
 } from "@/app/dashboard/[projectId]/payments/payments-table";
 import { RecordBlock, RecordStack } from "@/components/refresh-record";
-import { TokenMark } from "@/components/token-mark";
 import { useCanWrite, useOptionalDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import { DASHBOARD_SIDE_NAV_HREFS } from "@/lib/dashboard-navigation-loading";
@@ -105,8 +113,6 @@ import {
   TREASURY_PROGRAM_COLUMNS,
   TREASURY_STRATEGIES_BODY,
   TREASURY_STRATEGY_COLUMNS,
-  TREASURY_TABLE,
-  TREASURY_TABLE_FRAME,
   TREASURY_WALLET_GRID,
   TREASURY_WALLETS_BODY,
 } from "./treasury-layout";
@@ -320,64 +326,9 @@ function SortableNumericTableHead({
   );
 }
 
-/** The parts of a row's detail line, joined by the design's middle dot. */
-function detailLine(parts: readonly string[]): string {
-  return parts.join(" · ");
-}
-
-/** A row's subject over its 13px detail line, both truncating with the whole string kept. */
-function TreasuryRowIdentity({
-  asset,
-  detail,
-  name,
-}: {
-  asset?: { mint: string; symbol: string };
-  detail: ReactNode;
-  name: string;
-}) {
-  return (
-    <span className="flex min-w-0 items-center gap-3">
-      {asset ? <TokenMark mint={asset.mint} size="sm" symbol={asset.symbol} /> : null}
-      <span className="min-w-0">
-        <span className="block truncate font-medium text-primary" title={name}>
-          {name}
-        </span>
-        <span className="block truncate text-tertiary">{detail}</span>
-      </span>
-    </span>
-  );
-}
-
 /**
- * One figure in the stat line: the value at 16px, then what it is, then what it means behind
- * an (i).
- */
-function TreasurySummaryStat({
-  hint,
-  label,
-  refreshing,
-  value,
-}: {
-  hint: string;
-  label: string;
-  refreshing: boolean;
-  value: string;
-}) {
-  return (
-    // The figure reads at 16px over its 13px words, on one baseline, as Payments sets its counts.
-    <div className="flex h-6 items-baseline gap-1">
-      <div className="text-field font-medium text-primary tabular-nums">
-        {refreshing ? <BalanceRefreshing className="h-4 w-12" /> : value}
-      </div>
-      <span>{label}</span>
-      <InfoHint className="self-center" text={hint} />
-    </div>
-  );
-}
-
-/**
- * The page's summary, as Payments sets a balance: what is deposited is the hero figure, then
- * a stat line under a rule with the cash still in custody and the rate the positions earn.
+ * The page's summary: what is deposited is the hero figure, then the stat line with the cash still
+ * in custody and the rate the positions earn.
  */
 function TreasurySummary({
   allocation,
@@ -392,7 +343,7 @@ function TreasurySummary({
 }) {
   const t = useTranslations();
   const locale = useLocale();
-  if (isLoading) return <TreasurySummarySkeleton />;
+  if (isLoading) return <EarnSummarySkeleton />;
 
   const deployedHint =
     allocation.deployedValue !== undefined
@@ -401,44 +352,47 @@ function TreasurySummary({
         ? t("DashboardMarkets.treasury.summaryDeployedUnreconciled")
         : t("DashboardMarkets.treasury.summaryDeployedUnavailable");
   return (
-    <section className="min-w-0" data-treasury-section="summary">
-      <h2 className="flex h-4 items-center gap-1.5 text-meta text-secondary">
-        {t("DashboardMarkets.treasury.summaryDeposited")}
-        {deployedHint ? <InfoHint text={deployedHint} /> : null}
-      </h2>
-      <div className="mt-1.5 flex h-11 items-center text-amount font-medium text-primary tabular-nums">
-        {refreshing ? (
+    <EarnSummary
+      figure={
+        refreshing ? (
           <BalanceRefreshing className="h-11 w-40" />
         ) : (
           formatUsd(allocation.deployedValue, locale)
-        )}
-      </div>
-      <div className="mt-10 flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border-default pt-6 text-meta text-secondary">
-        <TreasurySummaryStat
-          hint={t(
+        )
+      }
+      hint={deployedHint}
+      label={t("DashboardMarkets.treasury.summaryDeposited")}
+      stats={[
+        {
+          id: "cash",
+          hint: t(
             allocation.availableCash === undefined
               ? "DashboardMarkets.treasury.summaryCashUnavailable"
               : "DashboardMarkets.treasury.summaryCashCaption"
-          )}
-          label={t("DashboardMarkets.treasury.summaryLineCash")}
-          refreshing={refreshing}
-          value={formatUsd(allocation.availableCash, locale)}
-        />
-        <span aria-hidden="true" className="text-tertiary">
-          ·
-        </span>
-        <TreasurySummaryStat
-          hint={t(
+          ),
+          label: t("DashboardMarkets.treasury.summaryLineCash"),
+          value: refreshing ? (
+            <BalanceRefreshing className="h-4 w-12" />
+          ) : (
+            formatUsd(allocation.availableCash, locale)
+          ),
+        },
+        {
+          id: "apy",
+          hint: t(
             estimatedApy === undefined
               ? "DashboardMarkets.treasury.summaryApyUnavailable"
               : "DashboardMarkets.treasury.summaryApyCaption"
-          )}
-          label={t("DashboardMarkets.treasury.summaryLineApy")}
-          refreshing={refreshing}
-          value={formatProviderApy(estimatedApy, locale)}
-        />
-      </div>
-    </section>
+          ),
+          label: t("DashboardMarkets.treasury.summaryLineApy"),
+          value: refreshing ? (
+            <BalanceRefreshing className="h-4 w-12" />
+          ) : (
+            formatProviderApy(estimatedApy, locale)
+          ),
+        },
+      ]}
+    />
   );
 }
 
@@ -891,7 +845,7 @@ function TreasuryPositions({
   const centered = !isLoading && activePositions.length === 0;
   let body: ReactNode;
   if (isLoading) {
-    body = <TreasuryTableSkeleton columns={TREASURY_POSITION_COLUMNS} rows={2} />;
+    body = <EarnTableSkeleton columns={TREASURY_POSITION_COLUMNS} rows={2} />;
   } else if (failed && activePositions.length === 0) {
     body = (
       <ListEmptyState
@@ -917,8 +871,8 @@ function TreasuryPositions({
       );
   } else {
     body = (
-      <div className={TREASURY_TABLE_FRAME}>
-        <Table className={TREASURY_TABLE} data-treasury-table="positions">
+      <div className={EARN_TABLE_FRAME}>
+        <Table className={EARN_TABLE} data-treasury-table="positions">
           <TableHeader>
             <TableRow>
               <TableHead className={cn(PAYMENTS_TABLE_HEAD, TREASURY_POSITION_COLUMNS.position)}>
@@ -957,9 +911,9 @@ function TreasuryPositions({
                   <TableCell
                     className={cn(PAYMENTS_TABLE_CELL, TREASURY_POSITION_COLUMNS.position)}
                   >
-                    <TreasuryRowIdentity
+                    <EarnRowIdentity
                       asset={asset}
-                      detail={detailLine([earnProviderLabel(position.provider), asset.symbol])}
+                      detail={earnDetailLine([earnProviderLabel(position.provider), asset.symbol])}
                       name={positionDisplayName(position)}
                     />
                   </TableCell>
@@ -1223,8 +1177,8 @@ function StrategyTable({
   };
 
   return (
-    <div className={TREASURY_TABLE_FRAME}>
-      <Table className={TREASURY_TABLE} data-treasury-table="strategies">
+    <div className={EARN_TABLE_FRAME}>
+      <Table className={EARN_TABLE} data-treasury-table="strategies">
         <TableHeader>
           <TableRow>
             <TableHead className={cn(PAYMENTS_TABLE_HEAD, TREASURY_STRATEGY_COLUMNS.strategy)}>
@@ -1265,11 +1219,11 @@ function StrategyTable({
             return (
               <TableRow key={strategy.id}>
                 <TableCell className={cn(PAYMENTS_TABLE_CELL, TREASURY_STRATEGY_COLUMNS.strategy)}>
-                  <TreasuryRowIdentity
+                  <EarnRowIdentity
                     asset={asset}
                     detail={
                       <>
-                        {detailLine([
+                        {earnDetailLine([
                           earnProviderLabel(strategy.provider),
                           ...(strategy.hostCluster === "devnet"
                             ? [SOLANA_CLUSTER_LABELS.devnet]
@@ -1388,7 +1342,7 @@ function StrategiesBody({
   unrecordedShareMints,
 }: Omit<TreasuryStrategiesProps, "devnetLoading" | "mainnetLoading" | "onRefresh">) {
   const t = useTranslations();
-  if (isLoading) return <TreasuryTableSkeleton columns={TREASURY_STRATEGY_COLUMNS} rows={4} />;
+  if (isLoading) return <EarnTableSkeleton columns={TREASURY_STRATEGY_COLUMNS} rows={4} />;
   if (failed) {
     return (
       <ListEmptyState
@@ -1582,8 +1536,8 @@ function TreasuryPrograms({
   } else {
     body = (
       <>
-        <div className={TREASURY_TABLE_FRAME}>
-          <Table className={TREASURY_TABLE} data-treasury-table="programs">
+        <div className={EARN_TABLE_FRAME}>
+          <Table className={EARN_TABLE} data-treasury-table="programs">
             <TableHeader>
               <TableRow>
                 <TableHead className={cn(PAYMENTS_TABLE_HEAD, TREASURY_PROGRAM_COLUMNS.program)}>
@@ -1608,7 +1562,7 @@ function TreasuryPrograms({
                     <TableCell
                       className={cn(PAYMENTS_TABLE_CELL, TREASURY_PROGRAM_COLUMNS.program)}
                     >
-                      <TreasuryRowIdentity
+                      <EarnRowIdentity
                         detail={earnProviderLabel(program.provider)}
                         name={programName(program, t("DashboardMarkets.treasury.unnamedProgram"))}
                       />
