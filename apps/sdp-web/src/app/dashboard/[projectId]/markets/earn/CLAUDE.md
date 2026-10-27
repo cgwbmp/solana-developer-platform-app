@@ -684,6 +684,12 @@ browser pass on `/dashboard/markets/embedded-yield` and
   surface: the integration guide's `ui/code-block`, which is mono by design.
   Selection state is `border-primary bg-fill-subtle` across the whole module.
   `Badge` is status-only.
+- **Transaction dialogs share one frame.** Every deposit, withdrawal, exit,
+  queued and par dialog, and the placeholder Treasury shows while one loads,
+  spreads `EARN_TRANSACTION_MODAL_FRAME` (`earn-modal.ts`): one width, and a
+  top edge that stays put as steps change height. A step that only gathers
+  input is a `<form>`, so Enter continues; a step whose primary action moves
+  money never submits on Enter: its button is the only way to confirm.
 - **Zero layout shift on Treasury.** Every loading, empty and error state keeps
   the ready footprint: the route skeleton and the in-page states share
   `treasury-solutions/treasury-layout.ts` (column widths, the positions body's
@@ -698,7 +704,9 @@ browser pass on `/dashboard/markets/embedded-yield` and
   after `.whitespace-normal`), and under `table-fixed` the still-unwrapped text
   overflows into the next column. Declare wrapping and clamping on the child
   spans, where nothing competes. Long text wraps inside a bounded clamp or truncates with
-  a `title` carrying the full string; numbers never truncate.
+  a `title` carrying the full string; numbers never truncate. In a dialog's
+  `DetailRow`, an amount takes `fit="figure"` (whole on one line, its label
+  wraps) and a name `fit="wrap"`.
 - Provider-unconfigured (503) must degrade to a quiet notice, never crash. Note
   the asymmetry: the money-in writes answer 403 even for *missing credentials*,
   so read `error.code`, not just the status, before labelling a failure.
