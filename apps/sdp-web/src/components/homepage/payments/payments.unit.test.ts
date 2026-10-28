@@ -127,16 +127,15 @@ describe("createBenchController", () => {
       removeEventListener: vi.fn(),
     }));
     Element.prototype.animate = vi.fn(() => {
-      const animation = {
+      const animation: Pick<Animation, "cancel" | "pause" | "play" | "playState" | "onfinish"> = {
         cancel: vi.fn(),
         pause: vi.fn(),
         play: vi.fn(),
         playState: "running",
         onfinish: null,
       };
-      // SAFETY: the bench calls only these members of an animation; the stub lacks the rest, so it
-      // goes through unknown.
-      return animation as unknown as Animation;
+      // SAFETY: the bench reads and writes only the picked members of an animation.
+      return animation as Animation;
     });
   });
 
