@@ -4,16 +4,17 @@ import {
   stripeOnrampSessionStatusSchema,
   stripeSessionSettlementEvent,
 } from "@sdp/payments/ramps/providers/stripe/session-status-mapping";
-import type { RampSettlementEvent, RampWebhookValidationContext } from "@sdp/payments/ramps/types";
+import type { RampSettlementEvent } from "@sdp/payments/ramps/types";
 import type { SdpEnvironment } from "@sdp/types/api-keys";
 import type { RampWebhookProcessResult } from "@sdp/types/payments";
 import { z } from "zod";
-import { AppError, badRequest, providerNotConfigured, unauthorized } from "@/lib/errors";
+import { AppError, badRequest, unauthorized } from "@/lib/errors";
 import { verifyWebhookSignature } from "@/lib/webhook-signature";
 import { getLogger } from "@/runtime/logger";
 import { applyRampSettlementEvent } from "@/services/payments/ramp-settlements";
+import { managedRampWebhookSecret } from "@/services/ramps/runtime";
 import type { Env } from "@/types/env";
-import type { WebhookProcessor } from "./processor";
+import type { RampWebhookValidationContext, WebhookProcessor } from "./processor";
 
 /** The one field every Stripe event carries that says which mode it ran in. */
 const stripeEventModeSchema = z.object({ livemode: z.boolean() });
@@ -21,26 +22,6 @@ const stripeEventModeSchema = z.object({ livemode: z.boolean() });
 interface StripeSignatureHeader {
   timestamp: string;
   signatures: string[];
-}
-
-/**
- * The secret that signs `environment`'s Stripe events. SDP holds the sandbox
- * secret only: production projects bring their own Stripe account (HOO-1943).
- */
-function readStripeWebhookSecret(
-  env: Record<string, string | undefined>,
-  environment: SdpEnvironment
-): string {
-  if (environment === "production") {
-    throw providerNotConfigured("Stripe webhooks are not configured for production.");
-  }
-  const secret = env.STRIPE_SANDBOX_WEBHOOK_SECRET?.trim();
-  if (!secret) {
-    throw providerNotConfigured(
-      "Stripe sandbox webhook secret is not configured (STRIPE_SANDBOX_WEBHOOK_SECRET)."
-    );
-  }
-  return secret;
 }
 
 function parseStripeSignatureHeader(header: string): StripeSignatureHeader | undefined {
@@ -142,7 +123,7 @@ export const stripeWebhook = {
     headers,
     rawBody,
   }: RampWebhookValidationContext): Promise<string> {
-    const secret = readStripeWebhookSecret(env, environment);
+    const secret = managedRampWebhookSecret(env, this.provider, environment);
     const signatureHeader = headers.get("stripe-signature")?.trim();
     if (!signatureHeader) {
       throw unauthorized("Stripe webhook is missing the Stripe-Signature header");

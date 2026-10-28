@@ -144,16 +144,6 @@ export function formatLamportsAsSol(lamports: bigint, locale?: string): string {
 }
 
 /**
- * Builds an amount-input placeholder that communicates an asset's precision.
- *
- * @param decimals - The asset's fractional digit count.
- * @returns A zero amount padded to the asset's decimals, e.g. `0.000000` for 6.
- */
-export function amountInputPlaceholder(decimals: number): string {
-  return decimals <= 0 ? "0" : `0.${"0".repeat(decimals)}`;
-}
-
-/**
  * Checks that a stored URL is safe to render as a link target: parseable and
  * http(s). `new URL` alone accepts `javascript:` and `data:` schemes, which
  * must never reach an href.
@@ -318,13 +308,6 @@ export function statusVariant(status: PaymentTransferStatus): BadgeVariant {
   return BADGE_VARIANT_BY_TONE[PAYMENT_TRANSFER_STATUS_TONE[status]];
 }
 
-export function formatDirection(direction: string | undefined, t: Translate): string {
-  if (!direction) {
-    return t("DashboardPayments.unknown");
-  }
-  return direction[0]?.toUpperCase() + direction.slice(1);
-}
-
 type TransactionCounterpartyFields = Pick<
   TransferRecord,
   "counterpartyId" | "type" | "direction" | "source" | "destination"
@@ -380,9 +363,13 @@ export function resolveTransferFlow(transfer: TransferRecord): {
     transfer.fiatAmount && transfer.fiatCurrency
       ? `${transfer.fiatAmount} ${transfer.fiatCurrency.toUpperCase()}`
       : null;
+  // What the recipient got is the provider's reported payout once it pays, not the quote.
+  const payoutLabel = transfer.fiatPayout
+    ? formatDisplayAmount(transfer.fiatPayout.amount, transfer.fiatPayout.currency.toUpperCase())
+    : null;
   return isInbound
     ? { send: fiatLabel, receive: cryptoLabel }
-    : { send: cryptoLabel, receive: fiatLabel };
+    : { send: cryptoLabel, receive: payoutLabel ?? fiatLabel };
 }
 
 export function resolveTotalBalance(balances: CustodyWalletTokenBalance[]): number | null {

@@ -51,24 +51,14 @@ const connectionWalletOwnerOpenApiSchema = connectionWalletOwnerSchemaBase
     }),
   });
 
-export const custodyWalletOwnerRequestSchema = z
-  .union([
-    managedWalletOwnerOpenApiSchema.meta({ not: { required: ["connectionId"] } }),
-    connectionWalletOwnerOpenApiSchema.meta({ not: { required: ["provider"] } }),
-  ])
-  .openapi({
-    description:
-      "The provider account a new wallet lives under: exactly one of provider (the project's Managed config for that provider) or connectionId (a Custody Connection).",
-    example: { connectionId: "cconn_123" },
-  });
-
 const walletCreationFieldsOpenApi = {
   label: withOpenApi(createManagedWalletSchemaBase.shape.label, {
     description: "Optional label for the new wallet.",
     example: "Mint authority wallet",
   }),
   purpose: withOpenApi(createManagedWalletSchemaBase.shape.purpose, {
-    description: "Optional semantic purpose for the wallet.",
+    description:
+      "What the wallet is for. Defaults to `transfer`, the only purpose a payment, transfer batch or recurring payment can send from.",
     example: "mint_authority",
   }),
 };
@@ -238,7 +228,7 @@ const custodyWalletTokenBalanceSchema = z
   })
   .openapi({ description: "Tracked fungible token balance." });
 
-export const custodyWalletSchema = custodyWalletBaseSchema
+const custodyWalletSchema = custodyWalletBaseSchema
   .extend({
     balances: z.array(custodyWalletTokenBalanceSchema).optional().openapi({
       description:

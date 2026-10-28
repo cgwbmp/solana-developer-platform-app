@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  canonicalJson,
   type IdempotencyKeyMode,
   isBodylessHttpStatus,
   isIdempotencyUnstoredStatus,
@@ -16,12 +17,7 @@ import {
 } from "@/db/repositories/idempotency-keys.repository";
 import { getAuth } from "@/lib/auth";
 import { AppError, internalError } from "@/lib/errors";
-import {
-  canonicalJson,
-  deriveProviderRequestId,
-  type JsonValue,
-  jsonValueSchema,
-} from "@/lib/idempotency";
+import { deriveProviderRequestId, type JsonValue, jsonValueSchema } from "@/lib/idempotency";
 import { getLogger } from "@/runtime/logger";
 import { describeError } from "@/runtime/money-path-events";
 import type { Env } from "@/types/env";
@@ -35,7 +31,7 @@ export const IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed";
  * Marks an {@link idempotent} handler with its key mode, for route inventory
  * tests.
  */
-export const IDEMPOTENCY_MARKER = Symbol.for("sdp.idempotency");
+const IDEMPOTENCY_MARKER = Symbol.for("sdp.idempotency");
 /** Marks an {@link idempotent} handler with its `recovery` option, for route inventory tests. */
 const IDEMPOTENCY_RECOVERY_MARKER = Symbol.for("sdp.idempotency.recovery");
 
@@ -91,7 +87,7 @@ export interface IdempotencyOptions {
   previousCanonicalize?: (body: JsonValue) => JsonValue;
 }
 
-export const DEFAULT_IDEMPOTENCY_LEASE_SECONDS = 60;
+const DEFAULT_IDEMPOTENCY_LEASE_SECONDS = 60;
 /**
  * The longest a request keeps renewing its lease. Past it, renewal stops and a
  * retry on a route that recovers from its row (`rerun`, or `recovery:
@@ -101,8 +97,8 @@ export const DEFAULT_IDEMPOTENCY_LEASE_SECONDS = 60;
  * with the terminal `IDEMPOTENCY_KEY_OUTCOME_UNKNOWN`. Statement and signing
  * timeouts end requests well before it.
  */
-export const MAX_IDEMPOTENCY_LEASE_RENEWAL_SECONDS = 15 * 60;
-export const IDEMPOTENCY_KEY_RETENTION_SECONDS = 24 * 60 * 60;
+const MAX_IDEMPOTENCY_LEASE_RENEWAL_SECONDS = 15 * 60;
+const IDEMPOTENCY_KEY_RETENTION_SECONDS = 24 * 60 * 60;
 /** Bodies up to this size are stored; a larger one is stored without its body. */
 export const MAX_STORED_RESPONSE_BYTES = 1024 * 1024;
 const COMPLETE_ATTEMPTS = 3;
@@ -125,7 +121,7 @@ export function requestFingerprint(input: {
  * The step must run in a route's own chain: from `use("*")` the pattern would
  * be the mount's wildcard, collapsing every endpoint under it into one scope.
  */
-export function idempotencyOperation(c: Context): string {
+function idempotencyOperation(c: Context): string {
   const pattern = routePath(c);
   if (pattern.includes("*")) {
     throw new Error(`idempotent() must be mounted on a route, not on ${pattern}`);

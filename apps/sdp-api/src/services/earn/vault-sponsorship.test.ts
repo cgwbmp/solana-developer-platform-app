@@ -1,3 +1,5 @@
+import { runInClusterScope } from "@sdp/rpc/scope";
+import type { SdpEnvironment } from "@sdp/types/api-keys";
 import type { Address } from "@solana/kit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as sponsorshipService from "@/services/sponsorship.service";
@@ -35,6 +37,17 @@ function scope(env: Partial<Env> = {}) {
   };
 }
 
+/** The resolution as a movement on `environment`'s cluster runs it: inside that scope. */
+function resolveIn(
+  environment: SdpEnvironment,
+  env: Env,
+  input: Parameters<typeof resolveVaultSponsorship>[1]
+) {
+  return runInClusterScope({ projectId: "prj_1", environment }, () =>
+    resolveVaultSponsorship(env, input)
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(sponsorshipService, "resolveProjectSponsorshipScope").mockImplementation(
@@ -53,7 +66,7 @@ describe("resolveVaultSponsorship", () => {
   it("sponsors devnet when the flag is on, resolving the sponsor once", async () => {
     const { env, input } = scope();
 
-    const fee = await resolveVaultSponsorship(env, { ...input, cluster: "devnet" });
+    const fee = await resolveIn("sandbox", env, input);
 
     expect(fee).toMatchObject({ kind: "sponsored", sponsor: SPONSOR });
     expect(vaultRentPayer(fee)).toBe(SPONSOR);
@@ -64,7 +77,7 @@ describe("resolveVaultSponsorship", () => {
     async (flag) => {
       const { env, input } = scope({ EARN_VAULT_FEE_SPONSORSHIP_ENABLED: flag });
 
-      const fee = await resolveVaultSponsorship(env, { ...input, cluster: "devnet" });
+      const fee = await resolveIn("sandbox", env, input);
 
       expect(fee).toEqual({ kind: "wallet-pays" });
       expect(vaultRentPayer(fee)).toBeUndefined();
@@ -91,7 +104,7 @@ describe("resolveVaultSponsorship", () => {
       KORA_DEVNET_URL: "https://kora-devnet.mock.invalid",
     });
 
-    const fee = await resolveVaultSponsorship(env, { ...input, cluster: "mainnet-beta" });
+    const fee = await resolveIn("production", env, input);
 
     expect(fee).toEqual({ kind: "wallet-pays" });
     expect(createSponsorshipFeePayment).not.toHaveBeenCalled();
@@ -107,10 +120,12 @@ describe("resolveVaultSponsorship", () => {
     const productionScope = { ...WALLET_SCOPE, environment: "production" } as const;
     resolveProjectSponsorshipScope.mockResolvedValue(productionScope);
 
-    const fee = await resolveVaultSponsorship(env, { ...input, cluster: "mainnet-beta" });
+    const fee = await resolveIn("production", env, input);
 
     expect(fee).toMatchObject({ kind: "sponsored", sponsor: SPONSOR });
-    expect(createSponsorshipFeePayment).toHaveBeenCalledWith(env, productionScope, "earn.deposit");
+    expect(createSponsorshipFeePayment).toHaveBeenCalledWith(env, productionScope, "earn.deposit", {
+      custodyWalletId: "cwlt_1",
+    });
   });
 
   it("goes through the shared sponsorship boundary, scoped to the custody wallet", async () => {
@@ -119,14 +134,16 @@ describe("resolveVaultSponsorship", () => {
     // bypassing it would spend the fee payer without any budget seeing it.
     const { env, input } = scope();
 
-    await resolveVaultSponsorship(env, { ...input, cluster: "devnet" });
+    await resolveIn("sandbox", env, input);
 
     expect(resolveProjectSponsorshipScope).toHaveBeenCalledWith(env, {
       organizationId: "org_1",
       projectId: "prj_1",
       actor: { type: "wallet", id: "cwlt_1" },
     });
-    expect(createSponsorshipFeePayment).toHaveBeenCalledWith(env, WALLET_SCOPE, "earn.deposit");
+    expect(createSponsorshipFeePayment).toHaveBeenCalledWith(env, WALLET_SCOPE, "earn.deposit", {
+      custodyWalletId: "cwlt_1",
+    });
   });
 
   it("bounds sponsor resolution with the caller's deadline", async () => {
@@ -136,11 +153,7 @@ describe("resolveVaultSponsorship", () => {
     });
     const { env, input } = scope();
 
-    const pending = resolveVaultSponsorship(env, {
-      ...input,
-      cluster: "devnet",
-      deadline: createVaultDeadline(25),
-    });
+    const pending = resolveIn("sandbox", env, { ...input, deadline: createVaultDeadline(25) });
     const rejection = expect(pending).rejects.toThrow(
       "Resolving the sponsored fee payer timed out after 25ms"
     );

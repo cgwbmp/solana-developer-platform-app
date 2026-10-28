@@ -94,6 +94,15 @@ included:
   scope is fixed runs. `assertCallerWalletInScope` reads the scope from
   authentication (ADR 0009) and is a fast refusal only; the waist still
   decides every signature.
+- **Recurring payments scope every write (HOO-2337, SDP-023 RE-3).** A
+  pending schedule's edit signs nothing, but the activator later signs the
+  terms it left, so a key scoped to wallet A could set what an in-scope
+  activator of wallet B signs. The recurring routes' `authorize` therefore
+  refuses an API key whose scope lacks the schedule's source wallet (or the
+  wallet an update moves it to) on create, every update shape, cancel,
+  activate, collect and resume, signing or not. Reads and lists stay
+  project-wide. A dashboard session holds every wallet; the job and
+  revocation cancel run without a request and are unchanged.
 - **A claim the job can finish is ordered against revocation.** A fresh
   recurring activation or resume is admitted before its claim, and the claim
   re-reads the activating key under a share lock (`lockLiveActivatingKey`).
@@ -106,3 +115,41 @@ included:
 - **Deactivating custody rows on deletion only**: blocks exits and covers only
   deletion, not entitlement.
 - **Hand-kept route lists or source-text tests**: drift silently (HOO-1990).
+
+## Proposed exception: Fireblocks native transfers (PR #2455)
+
+**Status: proposed; requires named security-owner approval before merge.** This
+section does not change the accepted signing rule above and is not evidence of
+security sign-off. The new `fireblocks-native-transfer` allowlist entry in
+`scripts/check-value-movement.mjs` needs the same explicit approval.
+
+Fireblocks BYOK uses native `TRANSFER` for SOL and USDC. SDP checks the initiating
+principal's live status, grants, wallet scope, organization, project entitlement
+and connection before creating the transfer. Fireblocks then owns construction,
+approval, signing, fee payment and broadcast. SDP has no execution callback at
+which to re-run `decideMovement` immediately before Fireblocks signs.
+
+The proposed boundary treats an accepted Fireblocks request as an externally
+committed payment: later SDP key revocation, membership removal, organization
+suspension, entitlement changes or connection deactivation prevent new SDP
+submissions but do not revoke that already accepted instruction. An unknown POST
+outcome may also have been accepted and must be treated the same way. Customers
+must reject or cancel pending transfers in Fireblocks when revoking access to
+contain an incident. A cancellation request can race signing or broadcasting and
+cannot guarantee that funds remain in the source vault.
+
+Compensating controls are tenant-scoped server-held API credentials, an Editor
+API user, Fireblocks-managed approval rules and designated signers, a durable
+external transaction ID with no automatic resubmission, exact settlement-intent
+checks, beta gating, and audit logs. These controls do not close the revocation
+race. SDP does not claim that its API user's RSA authentication key approves or
+signs blockchain transfers, and does not change Fireblocks policies for users.
+
+Alternatives: disable native transfers; use a provider signing flow with a
+supported enforceable execution callback; or add best-effort cancellation on SDP
+revocation as an additional mitigation. Cancellation alone does not satisfy the
+accepted atomic pre-sign admission requirement.
+
+Approval record (must be completed by the security owner): reviewer name,
+review date, PR/comment link, accepted exposure, and approval of both this
+exception and the `fireblocks-native-transfer` allowlist entry.

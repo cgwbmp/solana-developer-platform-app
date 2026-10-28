@@ -4,21 +4,15 @@ import { createApiKeyRequestSchema } from "@/openapi/schemas/api-keys";
 import {
   errorResponseSchema,
   includeArchivedQuerySchema,
-  memberIdParamSchema,
   projectIdParamSchema,
 } from "@/openapi/schemas/base";
-import {
-  addProjectMemberRequestSchema,
-  updateProjectMemberRequestSchema,
-  updateProjectRequestSchema,
-} from "@/openapi/schemas/projects";
+import { updateProjectRequestSchema } from "@/openapi/schemas/projects";
 import { errorResponses, jsonContent } from "./helpers";
 import {
   apiKeyCreateResponse,
   listProjectApiKeysResponse,
   listProjectMembersResponse,
   listProjectsResponse,
-  projectMemberResponse,
   projectProviderAvailabilityResponse,
   projectResponse,
 } from "./responses";
@@ -149,80 +143,6 @@ export function registerProjectAdministrationPaths(registry: OpenAPIRegistry) {
       200: {
         description: "Project members",
         content: jsonContent(listProjectMembersResponse),
-      },
-      ...errorResponses(errorResponseSchema, [401, 403, 404, 500]),
-    },
-  });
-
-  registry.registerPath({
-    method: "post",
-    path: "/v1/projects/{projectId}/members",
-    tags: ["Projects"],
-    summary: "Add project member",
-    operationId: "addProjectMember",
-    description: "Adds an organization member to the project.",
-    security: [{ clerkBearerAuth: [] }],
-    request: {
-      params: z.object({
-        projectId: projectIdParamSchema,
-      }),
-      body: {
-        required: true,
-        content: jsonContent(addProjectMemberRequestSchema),
-      },
-    },
-    responses: {
-      201: {
-        description: "Project member added",
-        content: jsonContent(projectMemberResponse),
-      },
-      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500]),
-    },
-  });
-
-  registry.registerPath({
-    method: "patch",
-    path: "/v1/projects/{projectId}/members/{memberId}",
-    tags: ["Projects"],
-    summary: "Update project member",
-    operationId: "updateProjectMember",
-    description: "Updates a project member role.",
-    security: [{ clerkBearerAuth: [] }],
-    request: {
-      params: z.object({
-        projectId: projectIdParamSchema,
-        memberId: memberIdParamSchema,
-      }),
-      body: {
-        required: true,
-        content: jsonContent(updateProjectMemberRequestSchema),
-      },
-    },
-    responses: {
-      204: {
-        description: "Project member updated",
-      },
-      ...errorResponses(errorResponseSchema, [400, 401, 403, 404, 500]),
-    },
-  });
-
-  registry.registerPath({
-    method: "delete",
-    path: "/v1/projects/{projectId}/members/{memberId}",
-    tags: ["Projects"],
-    summary: "Remove project member",
-    operationId: "removeProjectMember",
-    description: "Removes a member from the project.",
-    security: [{ clerkBearerAuth: [] }],
-    request: {
-      params: z.object({
-        projectId: projectIdParamSchema,
-        memberId: memberIdParamSchema,
-      }),
-    },
-    responses: {
-      204: {
-        description: "Project member removed",
       },
       ...errorResponses(errorResponseSchema, [401, 403, 404, 500]),
     },

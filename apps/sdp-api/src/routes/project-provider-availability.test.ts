@@ -1,13 +1,15 @@
 import type { Action } from "@sdp/types/actions";
 import type { SdpEnvironment } from "@sdp/types/api-keys";
-import type {
-  OrganizationProviderOverrides,
-  ProjectProviderAvailability,
-  ProjectProviderAvailabilityEntry,
+import {
+  type OrganizationProviderOverrides,
+  type ProjectProviderAvailability,
+  type ProjectProviderAvailabilityEntry,
+  RAMP_PROVIDERS,
 } from "@sdp/types/provider-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/db/client";
 import { app } from "@/index";
+import { managedRampKeyName } from "@/services/ramps/runtime";
 import { ALL_API_KEY_GRANTS } from "@/test/fixtures/api-keys";
 import { seedProjectApiKey, type TestApiKeyMaterial } from "@/test/helpers/api-keys";
 import { clerkHeadersWithoutProject } from "@/test/helpers/clerk";
@@ -20,16 +22,16 @@ import {
   type SeededDefaultProjects,
   seedDefaultProjects,
 } from "@/test/helpers/projects";
-import { providerStages } from "@/test/helpers/provider-stages";
+import { providerMaturity } from "@/test/helpers/provider-maturity";
 import { seedApiKeyRow, seedTestDatabase } from "@/test/mocks/db";
 import { clearKVStores } from "@/test/mocks/kv";
 import type { Env } from "@/types/env";
 
 vi.mock("@sdp/types/release-channels", async (importOriginal) => {
   const { mockCustodyReleaseChannels } = await import("@/test/helpers/custody-release-channel");
-  const { mockReleaseChannelStages } = await import("@/test/helpers/provider-stages");
+  const { mockReleaseChannelMaturity } = await import("@/test/helpers/provider-maturity");
   const { RAMP_PROVIDERS } = await import("@sdp/types/provider-access");
-  return mockReleaseChannelStages(
+  return mockReleaseChannelMaturity(
     mockCustodyReleaseChannels(
       await importOriginal<typeof import("@sdp/types/release-channels")>()
     ),
@@ -38,7 +40,7 @@ vi.mock("@sdp/types/release-channels", async (importOriginal) => {
 });
 
 vi.mock("@sdp/types/provider-access", async (importOriginal) => {
-  const { mockEarnProviderSurfacing } = await import("@/test/helpers/provider-stages");
+  const { mockEarnProviderSurfacing } = await import("@/test/helpers/provider-maturity");
   return mockEarnProviderSurfacing(
     await importOriginal<typeof import("@sdp/types/provider-access")>()
   );
@@ -107,6 +109,7 @@ const DEPLOYMENT_CREDENTIALS = {
   RANGE_API_KEY: "range_project_provider_availability_key",
   MOONPAY_SANDBOX_API_KEY: "pk_test_project_provider_availability",
   MOONPAY_SANDBOX_SECRET_KEY: "sk_test_project_provider_availability",
+  MOONPAY_SANDBOX_WEBHOOK_SECRET: "wk_test_project_provider_availability",
   STRIPE_SANDBOX_SECRET_KEY: "sk_test_project_provider_availability",
   STRIPE_SANDBOX_PUBLISHABLE_KEY: "pk_test_project_provider_availability",
   STRIPE_SANDBOX_WEBHOOK_SECRET: "whsec_project_provider_availability",
@@ -158,7 +161,10 @@ const SANDBOX_AVAILABILITY: ProjectProviderAvailability = {
       family: "custody",
       provider: "fireblocks",
       modes: [],
-      unavailableModes: SANDBOX_UNENTITLED_CUSTODY_MODES,
+      unavailableModes: [
+        { mode: "managed", reason: "provider_not_entitled" },
+        { mode: "byok", reason: "provider_not_entitled" },
+      ],
     },
     { family: "custody", provider: "privy", modes: ["managed", "byok"], unavailableModes: [] },
     {
@@ -223,7 +229,10 @@ const PRODUCTION_AVAILABILITY: ProjectProviderAvailability = {
       family: "custody",
       provider: "fireblocks",
       modes: [],
-      unavailableModes: PRODUCTION_UNOFFERED_CUSTODY_MODES,
+      unavailableModes: [
+        { mode: "managed", reason: "custody_mode_not_allowed" },
+        { mode: "byok", reason: "provider_not_entitled" },
+      ],
     },
     {
       family: "custody",
@@ -403,8 +412,8 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
   beforeEach(async () => {
     custodyReleaseChannel.outOfChannelMode = null;
     custodyReleaseChannel.stageOverride = null;
-    providerStages.moduleStageOverride = null;
-    providerStages.surfacedEarnProvider = null;
+    providerMaturity.moduleMaturityOverride = null;
+    providerMaturity.surfacedEarnProvider = null;
     earnPublication.published = true;
     await seedTestDatabase(env);
     await clearKVStores(env);
@@ -457,7 +466,7 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
 
   it("reports custody and compliance providers the release channel leaves out as unavailable", async () => {
     custodyReleaseChannel.outOfChannelMode = "managed";
-    providerStages.moduleStageOverride = { module: "compliance", stage: "experimental" };
+    providerMaturity.moduleMaturityOverride = { module: "compliance", stage: "experimental" };
 
     const availability = await readAvailability(
       "sandbox",
@@ -481,6 +490,28 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
     expect(availability.providers.filter((entry) => entry.family === "ramps")).toEqual([]);
     expect(availability.providers.filter((entry) => entry.family === "earn")).toEqual([]);
   });
+
+  it.each(["stable", "beta", "experimental"] as const)(
+    "advertises the actual Fireblocks BYOK stage to the dashboard in %s",
+    async (channel) => {
+      await setProviderOverrides({ custody: { fireblocks: true } });
+      const availability = await readAvailability(
+        "sandbox",
+        deploymentEnv({ SDP_RELEASE_CHANNEL: channel })
+      );
+      const fireblocks = availability.providers.find(
+        (entry) => entry.family === "custody" && entry.provider === "fireblocks"
+      );
+      expect(fireblocks).toMatchObject({
+        modes: channel === "stable" ? [] : ["byok"],
+        unavailableModes: expect.arrayContaining(
+          channel === "stable"
+            ? [{ mode: "byok", reason: "custody_provider_not_in_release_channel" }]
+            : []
+        ),
+      });
+    }
+  );
 
   it.for(EARN_FLAG_OFF_CASES)(
     "reports every Earn provider as outside the release channel while $flag is off",
@@ -545,7 +576,7 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
 
   it("reports below-stable providers the release channel offers the same in a Production project as in a Sandbox one, Managed custody aside", async () => {
     custodyReleaseChannel.stageOverride = { provider: "privy", mode: "byok", stage: "beta" };
-    providerStages.moduleStageOverride = { module: "compliance", stage: "beta" };
+    providerMaturity.moduleMaturityOverride = { module: "compliance", stage: "beta" };
 
     const production = await readAvailability("production", deploymentEnv({}));
     const sandbox = await readAvailability("sandbox", deploymentEnv({}));
@@ -555,7 +586,7 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
   });
 
   it("reports providers the deployment holds no credentials for as unavailable, except BYOK custody", async () => {
-    providerStages.surfacedEarnProvider = "upshift";
+    providerMaturity.surfacedEarnProvider = "upshift";
     await setProviderOverrides({
       ...FIXTURE_PROVIDER_OVERRIDES,
       earn: { veda: true, upshift: true },
@@ -605,11 +636,19 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
     });
   });
 
-  it("reports MoonPay unavailable in a Production project, since SDP holds sandbox keys only", async () => {
+  it("reports MoonPay in a Production project only once its production keys are mounted", async () => {
     const deployment = deploymentEnv({});
 
     const production = await readAvailability("production", deployment);
     const sandbox = await readAvailability("sandbox", deployment);
+    const withProductionKeys = await readAvailability(
+      "production",
+      deploymentEnv({
+        MOONPAY_PRODUCTION_API_KEY: "pk_live_project_provider_availability",
+        MOONPAY_PRODUCTION_SECRET_KEY: "sk_live_project_provider_availability",
+        MOONPAY_PRODUCTION_WEBHOOK_SECRET: "wk_live_project_provider_availability",
+      })
+    );
 
     expect(production.providers).toContainEqual({
       family: "ramps",
@@ -622,7 +661,29 @@ describe("GET /v1/projects/:projectId/provider-availability", () => {
       provider: "moonpay",
       available: true,
     });
+    expect(withProductionKeys.providers).toContainEqual({
+      family: "ramps",
+      provider: "moonpay",
+      available: true,
+    });
   });
+
+  it.each(RAMP_PROVIDERS)(
+    "reports %s unavailable while its sandbox webhook secret is missing",
+    async (provider) => {
+      const withoutSecret = deploymentEnv({
+        [managedRampKeyName(provider, "sandbox", "webhookSecret")]: undefined,
+      });
+      const sandbox = await readAvailability("sandbox", withoutSecret);
+
+      expect(sandbox.providers).toContainEqual({
+        family: "ramps",
+        provider,
+        available: false,
+        reason: "provider_not_configured",
+      });
+    }
+  );
 
   it("reports MoonPay unavailable when a live key sits under the sandbox names", async () => {
     const liveKey = deploymentEnv({ MOONPAY_SANDBOX_SECRET_KEY: "sk_live_mounted_by_mistake" });

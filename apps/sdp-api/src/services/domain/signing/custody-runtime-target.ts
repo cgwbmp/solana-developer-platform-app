@@ -9,18 +9,24 @@ import {
   type CustodyProvider,
   type CustodyWalletPurpose,
   type CustodyWalletStatus,
+  isByokCustodyProvider,
   type ProviderCredentialStatus,
 } from "@sdp/types/custody";
 import type { MovementId } from "@sdp/types/movements";
 import type { OrganizationProviderAvailabilityResponse } from "@sdp/types/provider-access";
-import { SDP_RAMP_PROVIDER_STAGES } from "@sdp/types/release-channels";
+import { SDP_RAMP_PROVIDER_MATURITY } from "@sdp/types/release-channels";
 import type { Address, TransactionSigner } from "@solana/kit";
 import type { Context } from "hono";
 import type { DatabaseClient } from "@/db/client";
 import { isCustodyWalletRequestRecorded } from "@/db/postgres-utils";
 import { AppError, conflict, internalError, notFound, providerUnavailable } from "@/lib/errors";
 import { isCustodyProviderAvailable } from "@/lib/feature-flags";
-import { decideMovement, readMovementFactsWith } from "@/lib/money-admission";
+import {
+  assertMovementAdmitted,
+  decideMovement,
+  decideWalletPurpose,
+  readMovementFactsWith,
+} from "@/lib/money-admission";
 import { getLogger } from "@/runtime/logger";
 import type { SigningConfigRecord } from "@/services/adapters/signing";
 import { AuditService } from "@/services/audit.service";
@@ -29,10 +35,20 @@ import {
   createCredentialSecretStore,
   type StoredCredentialSecret,
 } from "@/services/credential-secret-store";
-import { provisionPrivyWallet } from "@/services/custody/provisioning";
+import {
+  type ByokCredentialAuthentication,
+  parseByokCredential,
+} from "@/services/custody/byok-credential";
+import {
+  provisionFireblocksVaultAccount,
+  provisionPrivyWallet,
+} from "@/services/custody/provisioning";
 import { assertCustodyProviderCanCreateWallet } from "@/services/custody-provider-lifecycle.service";
 import { admittedSigner } from "@/services/domain/signing/admitted-signer";
-import { createPrivyAdapterFromCredential } from "@/services/domain/signing/provider-adapter-factory";
+import {
+  createFireblocksAdapterFromCredential,
+  createPrivyAdapterFromCredential,
+} from "@/services/domain/signing/provider-adapter-factory";
 import {
   assertCustodyProviderEntitled,
   assertManagedCustodyUseAllowed,
@@ -54,6 +70,7 @@ type ConfigAdapterResolver = (
 interface RuntimeWallet {
   walletId: string;
   publicKey: Address;
+  purpose: CustodyWalletPurpose | null;
 }
 
 interface ConfigRuntimeTarget {
@@ -147,6 +164,7 @@ interface ConfigRow {
 interface ConfigWalletRow extends ConfigRow {
   wallet_id: string;
   wallet_public_key: string;
+  wallet_purpose: string | null;
   wallet_status: string;
 }
 
@@ -167,6 +185,7 @@ interface ConnectionOwnerRow extends CustodyConnectionRuntimeAvailabilityFacts {
 interface ConnectionWalletRow extends ConnectionOwnerRow {
   wallet_id: string;
   wallet_public_key: string;
+  wallet_purpose: string | null;
   wallet_status: CustodyWalletStatus;
 }
 
@@ -340,7 +359,7 @@ export class CustodyRuntimeTargets {
       this.findOperationalWallets(params.organizationId, params.projectId),
       // Custody entries only: ramp provider stages cannot change them.
       getProviderAvailability(this.env, this.db, params.organizationId, {
-        rampProviderStages: SDP_RAMP_PROVIDER_STAGES,
+        rampProviderMaturity: SDP_RAMP_PROVIDER_MATURITY,
       }),
     ]);
     const configRows = ownedWallets.filter(isConfigOwnedWalletRow);
@@ -521,7 +540,7 @@ export class CustodyRuntimeTargets {
     projectId: string;
     connectionId: string;
     label?: string;
-    purpose?: CustodyWalletPurpose;
+    purpose: CustodyWalletPurpose;
     /** A keyed request's recovery point: sent to Privy and recorded on the row. */
     idempotency?: CustodyWalletIdempotency | null;
   }): Promise<CreatedCustodyConnectionWallet> {
@@ -545,11 +564,11 @@ export class CustodyRuntimeTargets {
     if (!credential || !isUsableCredentialOwner(credential)) {
       throw conflict("Custody Connection is unavailable");
     }
-    if (target.provider !== "privy") {
+    if (!isByokCustodyProvider(target.provider)) {
       throw internalError("Custody Connection provider is unsupported");
     }
 
-    const authentication = await this.readPrivyCredential(target, credential);
+    const authentication = await this.readByokCredential(target, credential);
     const custodyWalletId = `cwlt_${crypto.randomUUID()}`;
     const audit = new AuditService(this.db);
     const intent = await audit.beginCritical(params.auditContext, {
@@ -567,18 +586,32 @@ export class CustodyRuntimeTargets {
     });
     let provisioned: { walletId: string; address: string };
     try {
-      const requestId = params.idempotency?.requestId;
-      provisioned = await provisionPrivyWallet(
-        this.env,
-        requestId
-          ? {
-              credentialRequest: true,
-              externalId: privyWalletExternalId(requestId),
-              idempotencyKey: requestId,
-            }
-          : { credentialRequest: true },
-        authentication
-      );
+      if (authentication.provider === "fireblocks") {
+        provisioned = await provisionFireblocksVaultAccount(this.env, {
+          orgId: target.organizationId,
+          orgSlug: target.projectId,
+          idempotencyKey: params.idempotency?.requestId,
+          apiKey: authentication.apiKey,
+          apiSecretPem: authentication.apiSecretPem,
+          assetId: authentication.assetId,
+        }).then((wallet) => ({
+          walletId: `fb_${wallet.vaultAccountId}`,
+          address: wallet.publicKey,
+        }));
+      } else {
+        const requestId = params.idempotency?.requestId;
+        provisioned = await provisionPrivyWallet(
+          this.env,
+          requestId
+            ? {
+                credentialRequest: true,
+                externalId: privyWalletExternalId(requestId),
+                idempotencyKey: requestId,
+              }
+            : { credentialRequest: true },
+          { appId: authentication.appId, appSecret: authentication.appSecret }
+        );
+      }
     } catch (error) {
       if (!(error instanceof SigningError) || error.code === "NETWORK_ERROR") {
         // Keep the intent unresolved: the Provider may have created the wallet.
@@ -592,7 +625,10 @@ export class CustodyRuntimeTargets {
       throw providerUnavailable("Custody provider is temporarily unavailable");
     }
 
-    const providerWalletId = normalizePrivyWalletId(provisioned.walletId);
+    const providerWalletId =
+      target.provider === "privy"
+        ? normalizePrivyWalletId(provisioned.walletId)
+        : provisioned.walletId;
     let persisted: CreatedCustodyConnectionWallet;
     try {
       persisted = await this.persistConnectionWallet(target, credential, {
@@ -673,6 +709,13 @@ export class CustodyRuntimeTargets {
       throw new SigningError("Custody wallet not found", "WALLET_NOT_FOUND");
     }
     this.assertRuntimeExecutionAllowed(target, custodyWalletId);
+    assertMovementAdmitted(decideWalletPurpose(movement, target.wallet.purpose), {
+      surface: "signer",
+      movement,
+      organizationId,
+      projectId,
+      subjectId: custodyWalletId,
+    });
     await assertCustodyProviderEntitled(this.env, this.db, organizationId, target.provider);
 
     const adapter =
@@ -703,6 +746,75 @@ export class CustodyRuntimeTargets {
         custodyWalletId,
       }
     );
+  }
+
+  /** Exact BYOK owner resolution for native Fireblocks payments; never deployment credentials. */
+  async getFireblocksTransferAccess(
+    params: {
+      organizationId: string;
+      projectId: string;
+      custodyWalletId: string;
+    } & (
+      | { forSubmission: true }
+      | {
+          forSubmission: false;
+          intent: {
+            connectionId: string;
+            accountFingerprint: string;
+            vaultAccountId: string;
+            sourceAddress: string | null;
+          };
+        }
+    )
+  ) {
+    const target = await this.resolveRetainedWalletRecord(
+      params.organizationId,
+      params.projectId,
+      params.custodyWalletId
+    );
+    if (!target) throw notFound("Custody wallet");
+    // Managed Fireblocks wallets keep the existing sponsored-signing path.
+    if (target.provider !== "fireblocks" || target.kind !== "connection") return null;
+    if (!target.wallet) throw conflict("Fireblocks wallet is unavailable");
+    if (params.forSubmission) {
+      this.assertRuntimeExecutionAllowed(target, params.custodyWalletId);
+      await assertCustodyProviderEntitled(
+        this.env,
+        this.db,
+        params.organizationId,
+        target.provider
+      );
+    }
+    const row = await this.loadConnectionCredential(target);
+    if (row?.credential_status !== "active" || row.provider_account_fingerprint === null)
+      throw conflict("Custody Connection is unavailable");
+    if (params.forSubmission) {
+      if (!isUsableCredentialOwner(row)) throw conflict("Custody Connection is unavailable");
+    } else {
+      // Disabling a connection or failing a health check cannot cancel an accepted
+      // Fireblocks transfer. Recovery may read its retained credential, but only
+      // for the same account and wallet recorded in the pending payment intent.
+      // Check this binding before decrypting; credential revocation still applies.
+      const { intent } = params;
+      if (
+        target.connectionId !== intent.connectionId ||
+        row.provider_account_fingerprint !== intent.accountFingerprint ||
+        target.wallet.walletId !== `fb_${intent.vaultAccountId}` ||
+        target.wallet.publicKey !== intent.sourceAddress
+      )
+        throw conflict("Fireblocks connection does not match the payment intent");
+    }
+    const secret = await this.readByokCredential(target, row);
+    if (secret.provider !== "fireblocks" || !/^fb_\d+$/.test(target.wallet.walletId))
+      throw conflict("Invalid Fireblocks wallet");
+    return {
+      ...secret,
+      vaultAccountId: target.wallet.walletId.slice(3),
+      publicKey: target.wallet.publicKey,
+      connectionId: target.connectionId,
+      accountFingerprint: row.provider_account_fingerprint,
+      apiBaseUrl: this.env.FIREBLOCKS_API_BASE_URL,
+    };
   }
 
   private async resolveConnection(
@@ -841,7 +953,7 @@ export class CustodyRuntimeTargets {
       });
     }
 
-    if (row.provider !== "privy") {
+    if (!isByokCustodyProvider(row.provider)) {
       getLogger().error(
         {
           organizationId: target.organizationId,
@@ -869,12 +981,19 @@ export class CustodyRuntimeTargets {
       return cached;
     }
 
-    const secret = await this.readPrivyCredential(target, row);
-    const adapter = createPrivyAdapterFromCredential(this.env, {
-      ...secret,
-      walletId: wallet.walletId,
-      requestDelayMs: row.request_delay_ms ?? undefined,
-    });
+    const secret = await this.readByokCredential(target, row);
+    const adapter =
+      secret.provider === "fireblocks"
+        ? createFireblocksAdapterFromCredential(this.env, {
+            ...secret,
+            walletId: wallet.walletId,
+            requestDelayMs: row.request_delay_ms ?? undefined,
+          })
+        : createPrivyAdapterFromCredential(this.env, {
+            ...secret,
+            walletId: wallet.walletId,
+            requestDelayMs: row.request_delay_ms ?? undefined,
+          });
     this.adapterCache.set(cacheKey, adapter);
     return adapter;
   }
@@ -910,7 +1029,7 @@ export class CustodyRuntimeTargets {
       walletId: string;
       publicKey: string;
       label?: string;
-      purpose?: CustodyWalletPurpose;
+      purpose: CustodyWalletPurpose;
       idempotency: CustodyWalletIdempotency | null;
     }
   ): Promise<CreatedCustodyConnectionWallet> {
@@ -938,7 +1057,7 @@ export class CustodyRuntimeTargets {
         throw conflict("Custody Connection changed during wallet creation");
       }
 
-      // A Privy wallet belongs to the Provider account, not one Credential
+      // A custody wallet belongs to the Provider account, not one Credential
       // version. Rotation and rollback may change the pointer while the
       // Provider request is in flight, so re-lock the current scoped
       // Credential and rely on the unchanged account fingerprint above.
@@ -981,7 +1100,7 @@ export class CustodyRuntimeTargets {
           wallet.walletId,
           wallet.publicKey,
           wallet.label ?? null,
-          wallet.purpose ?? null,
+          wallet.purpose,
           wallet.idempotency?.requestId ?? null,
           wallet.idempotency?.fingerprint ?? null,
         ]
@@ -1024,10 +1143,10 @@ export class CustodyRuntimeTargets {
     );
   }
 
-  private async readPrivyCredential(
+  private async readByokCredential(
     target: ConnectionRuntimeTarget,
     row: ConnectionCredentialRow
-  ): Promise<{ appId: string; appSecret: string }> {
+  ): Promise<ByokCredentialAuthentication> {
     const stored: StoredCredentialSecret = {
       storageBackend: row.storage_backend,
       secretRef: row.secret_ref ?? undefined,
@@ -1040,12 +1159,7 @@ export class CustodyRuntimeTargets {
         orgId: target.organizationId,
         stored,
       });
-      const appId = typeof payload.appId === "string" ? payload.appId.trim() : "";
-      const appSecret = typeof payload.appSecret === "string" ? payload.appSecret : "";
-      if (!appId || !appSecret) {
-        throw new Error("incomplete credential payload");
-      }
-      return { appId, appSecret };
+      return parseByokCredential(row.provider, payload);
     } catch {
       this.logUnavailable(target, "credential_secret_unavailable");
       throw providerUnavailable("Custody credential is temporarily unavailable");
@@ -1068,6 +1182,7 @@ export class CustodyRuntimeTargets {
       wallet: {
         walletId: row.wallet_id,
         publicKey: row.wallet_public_key as Address,
+        purpose: parseWalletPurpose(row.wallet_purpose),
       },
       isRuntimeAvailable: row.status === "active" && row.wallet_status === "active",
     };
@@ -1161,6 +1276,7 @@ export class CustodyRuntimeTargets {
       wallet: {
         walletId: row.wallet_id,
         publicKey: row.wallet_public_key as Address,
+        purpose: parseWalletPurpose(row.wallet_purpose),
       },
       isRuntimeAvailable: this.isConnectionRuntimeAvailable(row) && row.wallet_status === "active",
     };
@@ -1381,6 +1497,7 @@ function connectionTargetSelect(): string {
                  pc.status AS credential_status, c.provider_account_fingerprint,
                  w.wallet_id,
                  w.public_key AS wallet_public_key,
+                 w.purpose AS wallet_purpose,
                  w.status AS wallet_status
           FROM custody_connections c
           JOIN provider_credentials pc
@@ -1395,7 +1512,7 @@ function configWalletSelect(): string {
                  c.config_encrypted, c.encryption_version,
                  c.status, c.created_at, c.updated_at,
                  w.wallet_id, w.public_key AS wallet_public_key,
-                 w.status AS wallet_status
+                 w.purpose AS wallet_purpose, w.status AS wallet_status
           FROM custody_configs c
           JOIN custody_wallets w ON w.custody_config_id = c.id`;
 }

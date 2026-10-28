@@ -13,7 +13,7 @@ import {
 } from "@sdp/types/actions";
 import {
   isModuleInReleaseChannel,
-  SDP_RAMP_PROVIDER_STAGES,
+  SDP_RAMP_PROVIDER_MATURITY,
   SDP_RELEASE_CHANNEL_NAMES,
 } from "@sdp/types/release-channels";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -37,7 +37,7 @@ import { clearKVStores } from "@/test/mocks/kv";
  * until it declares one.
  */
 const app = createApp({
-  rampProviderStages: SDP_RAMP_PROVIDER_STAGES,
+  rampProviderMaturity: SDP_RAMP_PROVIDER_MATURITY,
 });
 const routes = registeredRouteAuthorizations(app);
 
@@ -107,7 +107,7 @@ describe("route actions", () => {
     "lets a %s key hold the action of every route that channel runs",
     (channel) => {
       const inChannel = (owner: RouteOwner) =>
-        owner === "core" || isModuleInReleaseChannel(channel, owner, SDP_RAMP_PROVIDER_STAGES);
+        owner === "core" || isModuleInReleaseChannel(channel, owner, SDP_RAMP_PROVIDER_MATURITY);
       const unreachable = declared("action").flatMap(({ route, declaration }) => {
         if (declaration.kind !== "action" || !isAction(declaration.action)) return [];
         const routeOwner = routeOwnerOf(route.slice(route.indexOf(" ") + 1));
@@ -216,7 +216,8 @@ const REFUSED_BEFORE_THE_ACTION =
   /^(\/v1\/(api-keys|members|organizations)|\/v1\/projects\/:projectId\/(api-keys|members)|\/internal\/(playground|dashboard\/custody|dashboard\/helius-rings|dashboard\/wallets))(\/|$)/;
 
 /** The mounts above that refuse a key on every route, whatever its action. */
-const KEYLESS_MOUNTS = /^\/internal\/(playground|dashboard\/(custody|helius-rings|wallets))(\/|$)/;
+const KEYLESS_MOUNTS =
+  /^\/internal\/(playground|dashboard\/(custody|fireblocks|helius-rings|wallets))(\/|$)/;
 
 describe("actions no API key may hold", () => {
   const forbiddenRoutes = routes.filter((route) => {
@@ -317,7 +318,7 @@ describe("plugin routes", () => {
     };
     const withPlugin = registeredRouteAuthorizations(
       createApp({
-        rampProviderStages: SDP_RAMP_PROVIDER_STAGES,
+        rampProviderMaturity: SDP_RAMP_PROVIDER_MATURITY,
         plugins: [plugin],
       })
     );

@@ -1,9 +1,12 @@
 "use client";
 
+import { buildSnippets } from "@sdp/api-catalog/snippets";
+import { canonicalJson } from "@sdp/types/idempotency";
 import { IDEMPOTENCY_REQUIRED_ROUTES } from "@sdp/types/idempotency-required-routes";
 import { Button } from "@sdp/ui/button";
 import { cn } from "@sdp/ui/cn";
 import { Input } from "@sdp/ui/input";
+import { HighlightedCode, type HighlightLanguage } from "@sdp/ui/shiki-code";
 import { useThemeScope } from "@sdp/ui/theme-scope";
 import { Badge } from "@solana/design-system/badge";
 import { Braces, Clock3, Copy, Loader2, Play, Sparkles } from "lucide-react";
@@ -14,7 +17,6 @@ import {
   ApiPlaygroundEndpointOptions,
   ApiPlaygroundRefreshLayout,
 } from "@/components/api-playground-refresh-layout";
-import { buildSnippets } from "@/components/api-playground-snippets";
 import { useOptionalDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
 import type { MessageKey } from "@/i18n/messages";
 import { useTranslations } from "@/i18n/provider";
@@ -27,12 +29,13 @@ import { useDashboardUrlState } from "@/lib/dashboard-url-state";
 import {
   answerRetiresKey,
   apiErrorCode,
+  canonicalizeAmounts,
   IDEMPOTENCY_KEY_HEADER,
+  parseJsonValue,
   storageFingerprint,
 } from "@/lib/idempotency";
 import { createIdempotencyKeyStore } from "@/lib/idempotency-key-store";
 import { setNestedValue } from "@/lib/set-nested-value";
-import { HighlightedCode, type HighlightLanguage } from "@/lib/shiki-code";
 
 export type ApiPlaygroundMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -553,7 +556,24 @@ async function executePlaygroundRequest({
   // The request runs as the signed-in member against the tab's Project, so the
   // Project is part of what makes two Sends the same request.
   const { projectId } = parseDashboardPathname(window.location.pathname);
-  const sendRequest = JSON.stringify([projectId, activeEndpoint.method, resolvedPath, requestBody]);
+  // The body exactly as it goes out, read back in canonical form (keys sorted,
+  // arrays in order), so a Send that only reorders an object's keys is the same
+  // request to its key as it is to the API's fingerprint.
+  const sentBody =
+    hasRequestBody(activeEndpoint.method) && requestBody !== null
+      ? JSON.stringify(requestBody)
+      : undefined;
+  // On a money route the amounts are keyed canonically too ("100.00" and "100"
+  // move the same), as the API fingerprints them; the body still goes out as typed.
+  const keyedBody = sentBody === undefined ? null : parseJsonValue(sentBody);
+  const sendRequest = canonicalJson([
+    projectId,
+    activeEndpoint.method,
+    resolvedPath,
+    keyedBody !== null && isMoneyRouteRequest(activeEndpoint.method, resolvedPath)
+      ? canonicalizeAmounts(keyedBody)
+      : keyedBody,
+  ]);
   const claimed = hasRequestBody(activeEndpoint.method) ? keyForSend(sendRequest) : undefined;
   if (
     claimed !== undefined &&
@@ -571,10 +591,6 @@ async function executePlaygroundRequest({
   try {
     // The dashboard proxies the call itself: same method, path, query and
     // body, run as the session. The key is the one header it forwards.
-    const sentBody =
-      hasRequestBody(activeEndpoint.method) && requestBody !== null
-        ? JSON.stringify(requestBody)
-        : undefined;
     const headers = new Headers();
     if (sentBody !== undefined) {
       headers.set("Content-Type", "application/json");
@@ -1319,14 +1335,17 @@ export function ApiPlaygroundShell({
   rightMessages = [],
 }: ApiPlaygroundShellProps) {
   const t = useTranslations();
-  const releaseChannel = useOptionalDashboardWorkspace()?.flags.releaseChannel;
-  const endpoints = useMemo(
-    () =>
+  const workspace = useOptionalDashboardWorkspace();
+  const releaseChannel = workspace?.flags.releaseChannel;
+  // A read-only member runs reads only; the API would refuse every other call.
+  const readsOnly = workspace?.dashboardAccess.capabilities.canWrite === false;
+  const endpoints = useMemo(() => {
+    const published =
       releaseChannel === undefined
         ? offeredEndpoints
-        : filterPlaygroundEndpointsToReleaseChannel(offeredEndpoints, releaseChannel),
-    [offeredEndpoints, releaseChannel]
-  );
+        : filterPlaygroundEndpointsToReleaseChannel(offeredEndpoints, releaseChannel);
+    return readsOnly ? published.filter((endpoint) => endpoint.method === "GET") : published;
+  }, [offeredEndpoints, releaseChannel, readsOnly]);
   const refresh = useThemeScope() === "refresh";
   const {
     activeEndpoint,
@@ -1362,9 +1381,16 @@ export function ApiPlaygroundShell({
 
   if (!activeEndpoint) {
     // Every operation this surface offers is outside the published catalog.
-    return endpoints.length === 0 && offeredEndpoints.length > 0 ? (
-      <EmptyState>{t("Shared.SharedComponents.noPublishedPlaygroundOperations")}</EmptyState>
-    ) : null;
+    if (endpoints.length === 0 && offeredEndpoints.length > 0) {
+      return (
+        <EmptyState>
+          {readsOnly
+            ? t("Shared.SharedComponents.noReadOnlyPlaygroundOperations")
+            : t("Shared.SharedComponents.noPublishedPlaygroundOperations")}
+        </EmptyState>
+      );
+    }
+    return null;
   }
 
   const panelContent = resolvePanelContent(activePanel, codeSnippet, responseBody, exampleBody);

@@ -14,6 +14,19 @@ New ramp provider UI follows `docs/contributing/ramp-provider-safety.md` with
 the API integration. Show provider settlement as pending until chain delivery
 is verified; never turn a provider webhook alone into completed UI state.
 
+Poll with SWR by passing `refreshInterval` as an inline function each render,
+`(data) => interval(data)`. SWR clears a pending poll only when the option
+changes, so with a stable function, data that turns terminal through a
+`mutate` or another hook on the same key still gets one more request. The
+function sees only data SWR fetched, never `fallbackData`: a poll seeded by
+the server reads that seed itself while it gets `undefined`. An inline
+function restarts the timer on every render, so it suits a short watch that
+stops on its own. A poll that never stops keeps a plain number, and a slow
+poll on a page that re-renders faster than its cadence (a discovery list, a
+live feed with an idle back-off) uses `useCadencedSWR` (`src/lib`), which
+passes SWR a number derived from the last read so only a cadence change
+restarts the timer.
+
 Dashboard pages live under `app/dashboard/[projectId]/`, and the Project comes from the URL alone:
 
 - Server code (pages, server actions, route handlers) calls `createSdpApiClient()`, `requestProjectId()` and `requestProjectHref(path)` from `@/lib/sdp-api`; they read the request's `x-project-id`, which `proxy.ts` sets from the URL. Keep signatures Project-free: no `projectId` parameters, no reads of the selection cookie.

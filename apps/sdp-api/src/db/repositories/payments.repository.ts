@@ -9,10 +9,9 @@ import type {
 } from "@sdp/types/payments";
 import type { PersistedRampProviderId, RampProviderId } from "@sdp/types/provider-access";
 import type { PaymentTransactionKind } from "@sdp/types/unified-transactions";
-import type { DatabaseClient as RepositoryDbClient } from "@/db/client";
 
 export type PaymentTransferDirection = "inbound" | "outbound";
-export type PaymentTransferDeliveryMode = "hosted" | "manual_instructions" | "session_widget";
+type PaymentTransferDeliveryMode = "hosted" | "manual_instructions" | "session_widget";
 
 export interface PaymentTransferRow {
   id: string;
@@ -110,6 +109,8 @@ export interface UpdatePaymentTransferInput {
   /** Timeout CAS: only an unsigned row with no submission start may match. */
   requireUnsigned?: true;
   expectedStatus?: PaymentTransferStatus;
+  /** Guard a missing-provider verdict against a concurrent acknowledgement. */
+  expectedProviderReference?: string | null;
   status?: PaymentTransferStatus;
   signature?: string | null;
   serializedTx?: string | null;
@@ -128,7 +129,7 @@ export interface UpdatePaymentTransferInput {
 }
 
 /** Row fields a guarded status change may write alongside the status. */
-export interface TransferStatusChangeFields {
+interface TransferStatusChangeFields {
   sourceAddress?: string | null;
   destinationAddress?: string | null;
   signature?: string | null;
@@ -186,6 +187,7 @@ export interface ListTransfersByStatusInput {
   /** Only transfers whose project is in this environment, so one job run reads one cluster. */
   environment: SdpEnvironment;
   statuses: PaymentTransferStatus[];
+  fireblocks?: boolean;
   types?: readonly PaymentTransferType[];
   hasSignature?: boolean;
   createdBefore?: string;
@@ -199,7 +201,7 @@ export interface ListTransfersResult {
   total: number;
 }
 
-export type GetTransferByProviderReferenceInput = {
+type GetTransferByProviderReferenceInput = {
   provider: RampProviderId;
   providerReference: string;
 } & (
@@ -213,11 +215,22 @@ export type GetTransferByProviderReferenceInput = {
     }
 );
 
-export interface PaymentsRepositoryContext {
-  db: RepositoryDbClient;
-}
-
 export interface PaymentsRepository {
+  /** Exactly one provider submission attempt per durable Fireblocks intent. */
+  claimFireblocksTransferSubmission(input: {
+    transferId: string;
+    organizationId: string;
+    projectId: string;
+    now: string;
+  }): Promise<PaymentTransferRow | null>;
+  /** Throttle and serialize provider reads across dashboard requests and cron workers. */
+  claimFireblocksTransferPoll(input: {
+    transferId: string;
+    organizationId: string;
+    projectId: string | null;
+    polledBefore: string;
+    now: string;
+  }): Promise<PaymentTransferRow | null>;
   createTransfer(input: CreatePaymentTransferInput): Promise<PaymentTransferRow | null>;
   /**
    * Claims an awaiting off-ramp row for its crypto deposit transaction through

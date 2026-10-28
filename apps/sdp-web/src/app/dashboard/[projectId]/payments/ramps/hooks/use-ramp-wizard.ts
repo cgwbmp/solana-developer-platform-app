@@ -15,6 +15,7 @@ import { paymentsQueryKeys } from "@/app/dashboard/[projectId]/payments/payments
 import {
   type CounterpartiesResult,
   cancelRampTransfer,
+  counterpartyListComplete,
   fetchAllCounterparties,
 } from "@/app/dashboard/[projectId]/payments/payments-workspace.data";
 import {
@@ -27,6 +28,8 @@ import {
   rampSelectionSchema,
 } from "@/app/dashboard/[projectId]/payments/ramps/schema";
 import { useTranslations } from "@/i18n/provider";
+import { DEMO_PREFILL_AMOUNTS } from "@/lib/payments-demo/demo-prefill";
+import { usePaymentsDemo } from "@/lib/payments-demo/payments-demo-context";
 import type { RampProviderAccess } from "@/lib/provider-availability";
 import { DEFAULT_RAMP_PAIR, findRampPair, type RampPair, type SelectedRampPair } from "@/lib/ramps";
 import { useProjectHref } from "@/lib/use-dashboard-project";
@@ -114,12 +117,22 @@ export function useRampWizard<TId extends string>(
   const [hostedQuoteLoading, setHostedQuoteLoading] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [memoRows, setMemoRows] = useState<MemoRow[]>([]);
+  const demo = usePaymentsDemo();
+  const demoAmount =
+    config.requirements.direction === "onramp"
+      ? DEMO_PREFILL_AMOUNTS.deposit
+      : DEMO_PREFILL_AMOUNTS.payout;
   const { values: fields, setField } = useZodForm(rampSelectionSchema, {
     walletId: "",
-    amount: "",
+    amount: demo ? demoAmount : "",
     provider: null,
     counterpartyId: initialCounterpartyId,
   });
+
+  // Deposit picks its contact on the details step, outside this hook; follow it here.
+  useEffect(() => {
+    setField("counterpartyId", initialCounterpartyId);
+  }, [initialCounterpartyId, setField]);
 
   const { mutate: mutateSwrCache } = useSWRConfig();
   const selectProvider = (provider: RampProviderId) => {
@@ -163,6 +176,9 @@ export function useRampWizard<TId extends string>(
     fetchAllCounterparties,
     {
       fallbackData: counterpartiesResult,
+      // The server read the first page: reuse it when it holds every contact, and
+      // finish loading a larger directory here.
+      revalidateIfStale: !counterpartyListComplete(counterpartiesResult),
     }
   );
 
@@ -261,6 +277,7 @@ export function useRampWizard<TId extends string>(
     quoteInFlight,
     retryQuoteCreation,
     resetQuoteCreation,
+    discardQuote,
   } = useRampQuote({
     endpoint: config.quoteEndpoint,
     payload: quotePayload,
@@ -386,6 +403,17 @@ export function useRampWizard<TId extends string>(
     setStepIndex((current) => Math.max(0, current - 1));
   };
 
+  // A finished transfer can't take another payment: drop its quote and resume from a step.
+  const startOver = (stepId: TId) => {
+    discardQuote();
+    setStepIndex(
+      Math.max(
+        0,
+        steps.findIndex((step) => step.id === stepId)
+      )
+    );
+  };
+
   const handlePairChange = (nextPair: SelectedRampPair) => {
     setSelectedRampPair(nextPair);
     const support = findRampPair(config.pairs, nextPair);
@@ -443,6 +471,7 @@ export function useRampWizard<TId extends string>(
     handlePrimary,
     handleSecondary,
     finish,
+    startOver,
     handlePairChange,
     handleCounterpartyCreated,
   };

@@ -1,3 +1,4 @@
+import type { SdpEnvironment } from "@sdp/types/api-keys";
 import {
   CRYPTO_RAIL_ASSET_LABELS,
   type CryptoAssetSymbol,
@@ -5,7 +6,8 @@ import {
   type RampCountrySupport,
   type RampCurrencyLimit,
 } from "@sdp/types/payment-rails";
-import { internalError } from "#/errors";
+import { internalError, providerNotConfigured } from "#/errors";
+import type { RampProvider, RampProviderCredentials, RampRuntimeContext } from "#/ramps/types";
 
 let icuModernCurrencies: Set<string> | undefined;
 let countryDisplayNames: Intl.DisplayNames | undefined;
@@ -84,12 +86,80 @@ export function isIso3166Alpha2CountryCode(value: string): boolean {
   return displayName !== undefined && displayName !== normalized;
 }
 
-export function requireEnv(env: Record<string, string | undefined>, key: string): string {
-  const value = env[key]?.trim();
-  if (!value) {
-    throw new Error(`Missing required env: ${key}.`);
+const KEY_MODE_NAMES = {
+  sandbox: "test-mode",
+  production: "live-mode",
+} as const satisfies Record<SdpEnvironment, string>;
+
+/** The part of a provider its key checks read. */
+type RampKeyedProvider = Pick<RampProvider, "label" | "keyFormats">;
+
+/**
+ * Why `credentials` can't serve `provider` in `mode`, or null when both keys
+ * fit the mode's formats.
+ *
+ * @param provider - The provider the keys belong to.
+ * @param credentials - The keys to check.
+ * @param mode - The mode the call runs in.
+ * @returns The refusal, or null.
+ */
+export function checkRampCredentials(
+  provider: RampKeyedProvider,
+  credentials: RampProviderCredentials,
+  mode: SdpEnvironment
+): string | null {
+  const format = provider.keyFormats[mode];
+  if (
+    format.publicKey.test(credentials.publicKey) &&
+    format.secretKey.test(credentials.secretKey)
+  ) {
+    return null;
   }
-  return value;
+  return `${provider.label} ${mode} keys must be ${KEY_MODE_NAMES[mode]} keys.`;
+}
+
+/**
+ * Why `secret` can't verify `provider`'s webhooks in `mode`, or null when it
+ * fits the mode's format.
+ *
+ * @param provider - The provider the secret belongs to.
+ * @param secret - The webhook signing secret to check.
+ * @param mode - The mode the webhook route serves.
+ * @returns The refusal, or null.
+ */
+export function checkRampWebhookSecret(
+  provider: RampKeyedProvider,
+  secret: string,
+  mode: SdpEnvironment
+): string | null {
+  const format = provider.keyFormats[mode].webhookSecret;
+  if (format === undefined) {
+    return `${provider.label} takes no webhooks.`;
+  }
+  return format.test(secret)
+    ? null
+    : `${provider.label} ${mode} webhook secret has the wrong format.`;
+}
+
+/**
+ * `ctx`'s keys, once they fit `provider`'s formats for `ctx.mode`. Every
+ * provider call reads its keys here, so a key from the other mode never makes
+ * a request.
+ *
+ * @param provider - The provider making the call.
+ * @param ctx - The call's runtime.
+ * @returns The keys.
+ * @throws SdpPaymentsError PROVIDER_NOT_CONFIGURED when they don't fit the mode.
+ */
+export function rampCredentials(
+  provider: RampKeyedProvider,
+  ctx: RampRuntimeContext
+): RampProviderCredentials {
+  const refusal = checkRampCredentials(provider, ctx.credentials, ctx.mode);
+  if (refusal !== null) {
+    throw providerNotConfigured(refusal);
+  }
+  return ctx.credentials;
 }
 
 export function basicAuthHeader(username: string, password: string): string {

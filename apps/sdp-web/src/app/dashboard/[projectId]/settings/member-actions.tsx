@@ -1,5 +1,6 @@
 "use client";
 
+import { ORGANIZATION_ROLES, type OrganizationRole } from "@sdp/types/roles";
 import { Button } from "@sdp/ui/button";
 import {
   DropdownMenu,
@@ -12,17 +13,20 @@ import { MoreHorizontalIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { removeMember } from "@/app/members/actions";
+import { changeMemberRole, removeMember } from "@/app/members/actions";
 import { useTranslations } from "@/i18n/provider";
+import { useActionIdempotencyKey } from "@/lib/use-action-idempotency-key";
 
 export function MemberActions({
   memberId,
   label,
+  role,
   isSelf,
   isLastAdmin,
 }: {
   memberId: string;
   label: string;
+  role: OrganizationRole;
   isSelf: boolean;
   isLastAdmin: boolean;
 }) {
@@ -30,21 +34,59 @@ export function MemberActions({
   const router = useRouter();
   const [isConfirmOpen, setConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // One key per change, kept across its retries (a retry after a failed Clerk
+  // call finishes the same request) and retired by the answer that settles it.
+  const actionKey = useActionIdempotencyKey(null);
+  const nextRoles = ORGANIZATION_ROLES.filter((candidate) => candidate !== role);
+  const makeRoleLabel = {
+    admin: t("Shared.members.makeAdmin"),
+    member: t("Shared.members.makeMember"),
+    viewer: t("Shared.members.makeViewer"),
+  } as const satisfies Record<OrganizationRole, string>;
+
+  const blockedRoleReasonFor = (nextRole: OrganizationRole): string | null => {
+    if (isSelf) {
+      return t("Shared.members.cannotChangeOwnRole");
+    }
+    if (nextRole !== "admin" && isLastAdmin) {
+      return t("Shared.members.cannotDemoteLastAdmin");
+    }
+    return null;
+  };
+
+  const confirmRoleChange = (nextRole: OrganizationRole) => {
+    const input = JSON.stringify(["role", memberId, nextRole]);
+    startTransition(async () => {
+      const key = actionKey.keyFor(input);
+      const result = await changeMemberRole(memberId, nextRole, key);
+      actionKey.settled(input, key, result);
+      if (result.status === "error") {
+        toast.error(t("Shared.members.roleChangeFailed", { error: result.message }));
+        return;
+      }
+      toast.success(t("Shared.members.roleChanged", { member: label }));
+      router.refresh();
+    });
+  };
 
   // The API rejects both of these; disabling the row menu means the rule is
   // visible before someone commits to a destructive action rather than after.
-  const blockedReason = isSelf
-    ? t("Shared.members.cannotRemoveSelf")
-    : isLastAdmin
-      ? t("Shared.members.cannotRemoveLastAdmin")
-      : null;
+  let blockedReason: string | null = null;
+  if (isSelf) {
+    blockedReason = t("Shared.members.cannotRemoveSelf");
+  } else if (isLastAdmin) {
+    blockedReason = t("Shared.members.cannotRemoveLastAdmin");
+  }
 
   const confirmRemove = () => {
+    const input = JSON.stringify(["remove", memberId]);
     startTransition(async () => {
-      const result = await removeMember(memberId);
+      const key = actionKey.keyFor(input);
+      const result = await removeMember(memberId, key);
+      actionKey.settled(input, key, result);
 
-      if (!result.ok) {
-        toast.error(t("Shared.members.removeFailed", { error: result.error }));
+      if (result.status === "error") {
+        toast.error(t("Shared.members.removeFailed", { error: result.message }));
         return;
       }
 
@@ -61,13 +103,29 @@ export function MemberActions({
           <Button
             variant="ghost"
             size="icon-sm"
+            disabled={isPending}
             aria-label={t("Shared.members.memberActions", { member: label })}
           >
             <MoreHorizontalIcon className="size-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={Boolean(blockedReason)} onSelect={() => setConfirmOpen(true)}>
+          {nextRoles.map((nextRole) => {
+            const blockedRoleReason = blockedRoleReasonFor(nextRole);
+            return (
+              <DropdownMenuItem
+                key={nextRole}
+                disabled={isPending || Boolean(blockedRoleReason)}
+                onSelect={() => confirmRoleChange(nextRole)}
+              >
+                {blockedRoleReason ?? makeRoleLabel[nextRole]}
+              </DropdownMenuItem>
+            );
+          })}
+          <DropdownMenuItem
+            disabled={isPending || Boolean(blockedReason)}
+            onSelect={() => setConfirmOpen(true)}
+          >
             {blockedReason ?? t("Shared.members.removeMember")}
           </DropdownMenuItem>
         </DropdownMenuContent>

@@ -73,7 +73,7 @@ export function NavShell({
           />
           <div className={styles.right}>
             <span className={styles.lang}>
-              <LanguagePicker variant="landing" />
+              <LanguagePicker />
             </span>
             {signedIn ? null : (
               <a className={cn(shared.btn, shared.btnGhost, styles.ghost)} href={signInHref}>

@@ -4,11 +4,9 @@
 
 import { redactCredentialSecrets, redactCredentialString } from "@sdp/redaction/credentials";
 import type { Action } from "@sdp/types/actions";
-import type { CountryCode } from "@sdp/types/countries";
 import type { IdempotencyErrorCode } from "@sdp/types/idempotency";
 import type { RampDirection } from "@sdp/types/payments";
 import type { RampProviderId } from "@sdp/types/provider-access";
-import type { CounterpartyRequirements } from "@sdp/types/ramp-requirements";
 
 export type ErrorCode =
   | "BAD_REQUEST"
@@ -26,8 +24,6 @@ export type ErrorCode =
   | "REVOKED_API_KEY"
   | "INSUFFICIENT_PERMISSIONS"
   | "OPERATION_NOT_ALLOWED"
-  | "INVALID_INVITATION"
-  | "EXPIRED_INVITATION"
   | "INVALID_TOKEN"
   // Token issuance errors
   | "TOKEN_NOT_FOUND"
@@ -63,7 +59,7 @@ export type ErrorCode =
   // Idempotency-Key (HOO-1918, draft-ietf-httpapi-idempotency-key-header)
   | IdempotencyErrorCode;
 
-export interface ApiError {
+interface ApiError {
   code: ErrorCode;
   message: string;
   details?: Record<string, unknown>;
@@ -89,8 +85,6 @@ const ERROR_STATUS_CODES: Record<ErrorCode, number> = {
   REVOKED_API_KEY: 401,
   INSUFFICIENT_PERMISSIONS: 403,
   OPERATION_NOT_ALLOWED: 403,
-  INVALID_INVITATION: 400,
-  EXPIRED_INVITATION: 400,
   INVALID_TOKEN: 401,
   // Token issuance errors
   TOKEN_NOT_FOUND: 404,
@@ -152,8 +146,6 @@ const DEFAULT_ERROR_MESSAGES: Record<ErrorCode, string> = {
   REVOKED_API_KEY: "API key has been revoked",
   INSUFFICIENT_PERMISSIONS: "Insufficient permissions for this action",
   OPERATION_NOT_ALLOWED: "Operation not allowed for this API key",
-  INVALID_INVITATION: "Invalid invitation token",
-  EXPIRED_INVITATION: "Invitation has expired",
   INVALID_TOKEN: "Invalid or expired token",
   // Token issuance errors
   TOKEN_NOT_FOUND: "Token not found",
@@ -249,10 +241,6 @@ export function badRequestParams(details?: Record<string, unknown>): AppError {
 
 export function unauthorized(message?: string): AppError {
   return new AppError("UNAUTHORIZED", message);
-}
-
-export function insufficientPermissions(message?: string): AppError {
-  return new AppError("INSUFFICIENT_PERMISSIONS", message);
 }
 
 /**
@@ -358,14 +346,6 @@ export function unsupportedRampCorridor(
   );
 }
 
-export function unsupportedCounterparty(
-  provider: RampProviderId,
-  direction: RampDirection,
-  reason: string
-): CounterpartyRequirements {
-  return { provider, direction, status: "unsupported", reason };
-}
-
 export function counterpartyNotProvisioned(
   provider: RampProviderId,
   direction: RampDirection,
@@ -376,45 +356,4 @@ export function counterpartyNotProvisioned(
     `Counterparty is not provisioned for ${provider} ${direction}. Complete the counterparty requirements (POST /counterparties/:counterpartyId/requirements) before requesting a quote.`,
     { ...details, provider, direction }
   );
-}
-
-/**
- * Creates the error returned when more than one active external account matches a payout corridor.
- *
- * @param provider - Ramp provider owning the external accounts.
- * @param fiatCurrency - Fiat currency of the payout corridor.
- * @param destinationCountry - Destination country of the payout corridor.
- * @returns A bad-request error describing the ambiguous corridor.
- */
-export function counterpartyExternalAccountAmbiguous(
-  provider: RampProviderId,
-  fiatCurrency: string,
-  destinationCountry: CountryCode
-): AppError {
-  return badRequest(
-    `Counterparty has multiple active ${provider} external accounts for ${fiatCurrency} to ${destinationCountry}; explicit external-account selection is required.`
-  );
-}
-
-/**
- * Resolves a promise whose expected miss is signalled by throwing a specific
- * error class.
- *
- * @param promise - The in-flight operation.
- * @param expected - The error class that represents an expected miss.
- * @returns The result, or null when the operation threw an instance of
- *   `expected`; any other error rethrows.
- */
-export async function nullOnExpected<T>(
-  promise: Promise<T>,
-  expected: new (message?: string) => Error
-): Promise<T | null> {
-  try {
-    return await promise;
-  } catch (err) {
-    if (err instanceof expected) {
-      return null;
-    }
-    throw err;
-  }
 }

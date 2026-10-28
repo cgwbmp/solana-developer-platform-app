@@ -20,7 +20,11 @@ import {
 import type { MessageKey } from "@/i18n/messages";
 import type { TranslationValues } from "@/i18n/translate";
 import { dashboardRequest } from "@/lib/dashboard-fetch";
-import { IdempotencyOutcomeUnknownError, uncertainMoneyAnswerMessage } from "@/lib/idempotency";
+import {
+  canonicalDecimalAmount,
+  IdempotencyOutcomeUnknownError,
+  uncertainMoneyAnswerMessage,
+} from "@/lib/idempotency";
 import type { SdpApiClient } from "@/lib/sdp-api";
 
 type Translate = (key: MessageKey, values?: TranslationValues) => string;
@@ -234,7 +238,7 @@ export async function listRecurringPayments(
   return readDashboardEnvelope<ListPaymentRecurringPaymentsResponse>(
     response,
     dashboardRecurringPaymentsListEnvelopeSchema,
-    t("DashboardPayments.recurring.unableToLoad"),
+    t("DashboardPayments.newDesign.recurring.unableToLoad"),
     t
   );
 }
@@ -255,7 +259,7 @@ export async function getRecurringPayment(
   const data = await readDashboardEnvelope<PaymentRecurringPaymentResponse>(
     response,
     dashboardRecurringPaymentEnvelopeSchema,
-    t("DashboardPayments.recurring.unableToLoad"),
+    t("DashboardPayments.newDesign.recurring.unableToLoad"),
     t
   );
   return data.recurringPayment;
@@ -266,16 +270,19 @@ export async function createRecurringPayment(
   signal: AbortSignal | undefined,
   t: Translate
 ): Promise<PaymentRecurringPayment> {
+  // The action key is derived from the body text, so the amount is spelled
+  // canonically before it is keyed and sent: `25.0` re-entered as `25.00`
+  // after a lost answer is the same schedule under the same key.
   const response = await dashboardRequest("/api/dashboard/payments/recurring-payments", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, amount: canonicalDecimalAmount(input.amount) }),
     signal,
   });
   const data = await readDashboardEnvelope<PaymentRecurringPaymentResponse>(
     response,
     dashboardRecurringPaymentEnvelopeSchema,
-    t("DashboardPayments.recurring.unableToCreate"),
+    t("DashboardPayments.newDesign.recurring.unableToCreate"),
     t
   );
   return data.recurringPayment;
@@ -292,14 +299,19 @@ export async function updateRecurringPayment(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      // Keyed by the body text, so the amount is spelled as the API fingerprints it.
+      body: JSON.stringify(
+        input.amount === undefined
+          ? input
+          : { ...input, amount: canonicalDecimalAmount(input.amount) }
+      ),
       signal,
     }
   );
   const data = await readDashboardEnvelope<PaymentRecurringPaymentResponse>(
     response,
     dashboardRecurringPaymentEnvelopeSchema,
-    t("DashboardPayments.recurring.paymentUpdateFailed"),
+    t("DashboardPayments.newDesign.recurring.paymentUpdateFailed"),
     t
   );
   return data.recurringPayment;
@@ -327,7 +339,7 @@ export async function runRecurringPaymentAction(
   >(
     response,
     dashboardRecurringPaymentEnvelopeSchema,
-    t("DashboardPayments.recurring.actionFailed"),
+    t("DashboardPayments.newDesign.recurring.actionFailed"),
     t
   );
   return data.recurringPayment;
@@ -360,7 +372,10 @@ export async function fetchRecurringPayments(
     return {
       ok: false,
       status: null,
-      error: error instanceof Error ? error.message : t("DashboardPayments.recurring.unableToLoad"),
+      error:
+        error instanceof Error
+          ? error.message
+          : t("DashboardPayments.newDesign.recurring.unableToLoad"),
     };
   }
 }
@@ -388,7 +403,10 @@ export async function fetchRecurringPaymentById(
     return {
       ok: false,
       status: null,
-      error: error instanceof Error ? error.message : t("DashboardPayments.recurring.unableToLoad"),
+      error:
+        error instanceof Error
+          ? error.message
+          : t("DashboardPayments.newDesign.recurring.unableToLoad"),
     };
   }
 }

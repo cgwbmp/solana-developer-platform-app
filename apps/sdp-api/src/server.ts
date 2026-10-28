@@ -7,19 +7,19 @@
  * The shutdown sequence lives in `runtime/shutdown-node.ts`.
  */
 
-import "@sdp/env-config/tls-trust";
-
 import { pathToFileURL } from "node:url";
 import { type ServerType, serve } from "@hono/node-server";
 import { assertKoraConfigured } from "@sdp/fee-payment";
-import { SDP_RAMP_PROVIDER_STAGES } from "@sdp/types/release-channels";
+import { assertManagedRpcConfigured } from "@sdp/rpc/factory";
+import { SDP_RAMP_PROVIDER_MATURITY } from "@sdp/types/release-channels";
 
 import { createApp } from "@/app";
 import { assertCronConfig, type CronHandle, startCron } from "@/cron/runner";
 import { parseDatabaseEnv } from "@/db/database-env";
 import { warmClerkSigningKeys } from "@/lib/clerk-token";
 import { assertSdpReleaseChannelConfigured } from "@/lib/feature-flags";
-import { getProcessEnv } from "@/lib/runtime-env";
+import { resolveGatewayIdentityConfig } from "@/lib/gateway-identity";
+import { getProcessEnv, isSelfHostedDeployment } from "@/lib/runtime-env";
 import { createNodeExecutionContext, NodeBackgroundRunner } from "@/runtime/background-node";
 import { startEgressGate } from "@/runtime/egress-gate";
 import { createNodeHttpApp } from "@/runtime/http-node";
@@ -113,11 +113,20 @@ export function assertRequiredEnv(env: Env): void {
   if (!env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required for the Node runtime");
   }
+  // Every API key is stored and looked up peppered (HOO-2219): without it, keys
+  // minted under the pepper stop matching and new ones hash as plain SHA-256.
+  if (!env.API_KEY_PEPPER?.trim()) {
+    throw new Error("API_KEY_PEPPER is required");
+  }
+  resolveGatewayIdentityConfig(env);
   parseDatabaseEnv(env);
   assertCustodyEncryptionScheme(env);
   assertSigningProviderAllowed(env);
   assertSdpReleaseChannelConfigured(env);
   assertKoraConfigured(env);
+  if (!isSelfHostedDeployment(env)) {
+    assertManagedRpcConfigured();
+  }
 }
 
 async function main(): Promise<void> {
@@ -144,7 +153,7 @@ async function main(): Promise<void> {
 
   const app = createNodeHttpApp(
     createApp({
-      rampProviderStages: SDP_RAMP_PROVIDER_STAGES,
+      rampProviderMaturity: SDP_RAMP_PROVIDER_MATURITY,
       egressReadiness: egress?.state,
     })
   );

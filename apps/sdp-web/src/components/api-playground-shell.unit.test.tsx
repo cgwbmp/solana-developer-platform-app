@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getMessages } from "@/i18n/messages";
 import { I18nProvider } from "@/i18n/provider";
+import * as playgroundCatalog from "@/lib/api-playground-openapi-catalog";
 import {
   createIdempotencyKeyStore,
   resetIdempotencyKeyStoresForTests,
@@ -18,8 +19,13 @@ import { type ApiPlaygroundEndpointConfig, ApiPlaygroundShell } from "./api-play
 interface ShellTestMocks {
   replaceSearchParams: ReturnType<typeof vi.fn>;
   searchParamGet: ReturnType<typeof vi.fn<() => string | null>>;
-  /** The dashboard workspace the shell reads its release channel from; none by default. */
-  workspace: { flags: { releaseChannel: SdpReleaseChannel } } | undefined;
+  /** The dashboard workspace the shell reads its release channel and access from; none by default. */
+  workspace:
+    | {
+        flags: { releaseChannel: SdpReleaseChannel };
+        dashboardAccess: { capabilities: { canWrite: boolean } };
+      }
+    | undefined;
 }
 
 const mocks = vi.hoisted(
@@ -41,7 +47,7 @@ vi.mock("@/lib/dashboard-url-state", () => ({
   }),
 }));
 
-vi.mock("@/lib/shiki-code", () => ({
+vi.mock("@sdp/ui/shiki-code", () => ({
   HighlightedCode: ({ content }: { content: string }) => <pre>{content}</pre>,
 }));
 
@@ -277,6 +283,61 @@ describe("ApiPlaygroundShell", () => {
     expect(sentKey(3)).not.toBe(sentKey(2));
   });
 
+  // SOLA9-817: the retry key was derived from order-sensitive JSON text, so a
+  // Send that only reordered a body's keys after a lost answer minted a new key
+  // and the API, which fingerprints the body key-sorted, ran the write again.
+  it("resends a lost POST whose body only reorders object keys under its key", async () => {
+    setWindowPathname(`/dashboard/${PRODUCTION_PROJECT.id}/api-keys`);
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init: RequestInit) => {
+      throw new TypeError("Failed to fetch");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const view = render(
+      <I18nProvider locale="en" messages={getMessages("en")}>
+        <ApiPlaygroundShell
+          endpoints={[
+            {
+              ...endpoint,
+              id: "post-json",
+              method: "POST",
+              bodyFields: [
+                {
+                  key: "metadata",
+                  label: "Metadata",
+                  kind: "textarea",
+                  valueType: "json",
+                  defaultValue: '{"a":1,"b":{"c":2,"d":[1,2]}}',
+                },
+              ],
+            },
+          ]}
+          productName="Test product"
+        />
+      </I18nProvider>
+    );
+    const sentKey = (call: number) =>
+      new Headers(fetchMock.mock.calls[call][1].headers).get("Idempotency-Key") ?? undefined;
+    const send = async (metadata: string, calls: number) => {
+      await waitFor(() =>
+        expect(view.getByRole("button", { name: "Run request" }).hasAttribute("disabled")).toBe(
+          false
+        )
+      );
+      fireEvent.change(view.getByLabelText("Metadata"), { target: { value: metadata } });
+      fireEvent.click(view.getByRole("button", { name: "Run request" }));
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(calls));
+    };
+
+    await send('{"a":1,"b":{"c":2,"d":[1,2]}}', 1);
+    await send('{"b":{"d":[1,2],"c":2},"a":1}', 2);
+    // Array order is part of the request: a reordered array is a new write.
+    await send('{"b":{"d":[2,1],"c":2},"a":1}', 3);
+
+    expect(sentKey(0)).toEqual(expect.any(String));
+    expect(sentKey(1)).toBe(sentKey(0));
+    expect(sentKey(2)).not.toBe(sentKey(0));
+  });
+
   // Greptile (#2440): an expired session answers a retry with the sign-in page,
   // a followed redirect with status 200; that is not the API's answer.
   it("keeps a POST's key when the answer is a followed redirect, so the retry still reuses it", async () => {
@@ -498,7 +559,10 @@ describe("ApiPlaygroundShell refresh layout", () => {
   });
 
   it("says the playground has nothing to run when no offered operation is published", () => {
-    mocks.workspace = { flags: { releaseChannel: "experimental" } };
+    mocks.workspace = {
+      flags: { releaseChannel: "experimental" },
+      dashboardAccess: { capabilities: { canWrite: true } },
+    };
     try {
       const view = render(
         <I18nProvider locale="en" messages={getMessages("en")}>
@@ -511,6 +575,46 @@ describe("ApiPlaygroundShell refresh layout", () => {
         )
       ).toBeTruthy();
     } finally {
+      mocks.workspace = undefined;
+    }
+  });
+
+  it("offers a read-only member reads only, and says so when nothing is left", () => {
+    const write: ApiPlaygroundEndpointConfig = {
+      ...endpoint,
+      id: "test-write",
+      title: "Test write",
+      method: "POST",
+    };
+    mocks.workspace = {
+      flags: { releaseChannel: "experimental" },
+      dashboardAccess: { capabilities: { canWrite: false } },
+    };
+    const filter = vi
+      .spyOn(playgroundCatalog, "filterPlaygroundEndpointsToReleaseChannel")
+      .mockImplementation((endpoints) => endpoints);
+    try {
+      const withRead = render(
+        <I18nProvider locale="en" messages={getMessages("en")}>
+          <ApiPlaygroundShell endpoints={[write, endpoint]} productName="Test product" />
+        </I18nProvider>
+      );
+      expect(withRead.queryByText("Test write")).toBeNull();
+      expect(withRead.getAllByText("Test request").length).toBeGreaterThan(0);
+      withRead.unmount();
+
+      const writesOnly = render(
+        <I18nProvider locale="en" messages={getMessages("en")}>
+          <ApiPlaygroundShell endpoints={[write]} productName="Test product" />
+        </I18nProvider>
+      );
+      expect(
+        writesOnly.getByText(
+          "Every operation here changes something, and read-only access can only run reads."
+        )
+      ).toBeTruthy();
+    } finally {
+      filter.mockRestore();
       mocks.workspace = undefined;
     }
   });

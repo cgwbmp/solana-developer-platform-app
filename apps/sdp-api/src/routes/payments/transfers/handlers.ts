@@ -8,7 +8,7 @@ import {
   type SolanaRpc,
 } from "@sdp/rpc/solana";
 import { assertValidAddress } from "@sdp/solana/address";
-import { formatDecimalAmount, parseDecimalAmount } from "@sdp/solana/amount";
+import { formatDecimalAmount, parseTokenAmount } from "@sdp/solana/amount";
 import type { Action } from "@sdp/types/actions";
 import {
   isRampTransferType,
@@ -17,10 +17,13 @@ import {
   PAYMENT_TRANSFER_TYPES,
   RAMP_TRANSFER_TYPES,
   TRANSFER_CHAIN_VERDICT_STATUSES,
+  type TransferLandingStatus,
   type PaymentTransferStatus as TransferStatus,
   type PaymentTransferType as TransferType,
+  transferLandingStatus,
   WALLET_TRANSFER_TYPES,
 } from "@sdp/types/payments";
+import { SOL_DECIMALS } from "@sdp/types/well-known-tokens";
 import {
   type Address,
   address,
@@ -61,7 +64,7 @@ import {
   solanaRpcError,
   transactionFailed,
 } from "@/lib/errors";
-import { assertCallerWalletInScope } from "@/lib/money-admission";
+import { assertCallerMaySignWith } from "@/lib/money-admission";
 import { appErrorResponse, paginated, success } from "@/lib/response";
 import { getRequestTenantScope } from "@/lib/tenant-scope";
 import { type AuthorizeInput, getAuthorized } from "@/middleware/authorize";
@@ -75,14 +78,17 @@ import {
 import { enforceMeteredQuota } from "@/middleware/metered-quota";
 import type { MovementStepInput, RecordAnswer } from "@/middleware/movement-steps";
 import { callerMayPerform } from "@/middleware/require-action";
-import { assertTransferRampProviderInChannel } from "@/middleware/require-module";
+import {
+  assertModuleInChannel,
+  assertTransferRampProviderInChannel,
+  isModuleInChannel,
+} from "@/middleware/require-module";
 import type { ValidatedBodyContext } from "@/middleware/validate";
 import { type AppContext, getPaymentsRepository } from "@/routes/payments/context";
 import { mapTransferRow } from "@/routes/payments/mappers";
 import { transferIdParamsSchema } from "@/routes/payments/schemas";
 import {
   buildSplTransferInstructions,
-  resolveMintTokenProgram,
   resolveSourceTokenAccount,
   resolveTokenLabel,
   type SplTransferSource,
@@ -103,7 +109,15 @@ import {
   type OutboundPaymentOperation,
   resolveOutboundPaymentOperation,
 } from "@/services/payment-operation.service";
+import {
+  isFireblocksTransfer,
+  prepareFireblocksTransfer,
+  refreshFireblocksTransfer,
+  submitFireblocksTransfer,
+} from "@/services/payments/fireblocks-transfer";
+import { signWithFreshBlockhash } from "@/services/payments/sign-with-fresh-blockhash";
 import { createTransferSignedSubmissionStore } from "@/services/payments/signed-submission";
+import { loadPaymentMint, parseStaticPaymentAmount } from "@/services/payments/token-amount";
 import { createOrgSignerForCustodyWallet } from "@/services/solana/signer";
 import {
   createSponsorshipFeePayment,
@@ -256,17 +270,17 @@ async function assertRampDepositFunded(
   operation: OutboundPaymentOperation
 ): Promise<SplTransferSource | undefined> {
   if (isNativePaymentToken(operation.token)) return undefined;
-  const rpc = createClusterRpc();
   const mint = assertValidAddress(operation.token, "token");
-  const tokenProgram = await resolveMintTokenProgram(rpc, mint);
-  const source = await resolveSourceTokenAccount(
-    rpc,
+  const paymentMint = await loadPaymentMint(mint);
+  const { tokenProgram, toBaseUnits } = paymentMint;
+  const account = await resolveSourceTokenAccount(
     address(operation.sourceWallet.publicKey),
     mint,
     tokenProgram
   );
-  const needed = parseDecimalAmount(operation.amount, source.decimals);
-  if (!source.frozen && source.amount >= needed) return { ...source, tokenProgram };
+  const source = { ...account, ...paymentMint };
+  const needed = toBaseUnits(operation.amount);
+  if (!source.frozen && source.amount >= needed) return { ...source, tokenProgram, toBaseUnits };
 
   const token = resolveTokenLabel(mint);
   const held = formatDecimalAmount(source.amount, source.decimals);
@@ -383,11 +397,11 @@ export async function authorizeTransfer(
     token: body.token,
     amount: body.amount,
   });
-  // The custody signer refuses a wallet outside the key's scope (HOO-2099).
-  // Refusing here as well, before the key is claimed, keeps a refused start
-  // from writing a failed transfer row and an Idempotency-Key that would
-  // replay that failure after the scope is fixed.
-  assertCallerWalletInScope(scope.auth, operation.sourceWallet.id);
+  // The custody signer refuses a wallet outside the key's scope (HOO-2099)
+  // or of a purpose that may not send (APE-371). Refusing here as well,
+  // before the key is claimed, keeps a refused start from writing a failed
+  // transfer row and an Idempotency-Key that would replay that failure.
+  assertCallerMaySignWith(scope.auth, operation.sourceWallet, "payments.transfer");
   // A ramp deposit the request funds is named by id: it must be in the
   // project before the key is claimed, so a wrong id is never stored as a 404.
   let rampTransfer: TransferRow | null = null;
@@ -521,6 +535,16 @@ async function updateTransferRecord(
   if (updated) {
     return { outcome: "updated", row: updated };
   }
+  if (!isRampTransferType(transfer.type) && patch.status === "finalized") {
+    const upgraded = await repository.updateTransfer({
+      ...change,
+      expectedStatus: "confirmed",
+      status: "finalized",
+    });
+    if (upgraded) {
+      return { outcome: "updated", row: upgraded };
+    }
+  }
 
   const current = await repository.getTransferById({
     transferId: transfer.id,
@@ -597,7 +621,11 @@ async function releaseUnsentRampDeposit(
 
 /**
  * A failure after the durable start marker remains processing for chain
- * reconciliation. Before that marker, no broadcast was possible and the
+ * reconciliation, and the request answers with the row as it stands now, so a
+ * verdict reconciliation already wrote is what the caller sees (APE-892): a
+ * success closes the audit intent like a concurrent verdict, and a failure
+ * answers exactly as a later replay of the row would.
+ * Before that marker, no broadcast was possible and the
  * transfer can fail normally; an unsigned off-ramp deposit is released.
  */
 async function settleTransferExecutionFailure(
@@ -611,7 +639,21 @@ async function settleTransferExecutionFailure(
   const submitted = await recorder.submittedRow();
   if (submitted && !isDefiniteExecutionFailure(error)) {
     logSubmittedUnconfirmed(transfer, submitted.signature, error);
-    return success(c, toPayload(submitted));
+    const current = await getPaymentsRepository(c).getTransferById({
+      transferId: transfer.id,
+      organizationId: transfer.organization_id,
+      projectId: transfer.project_id,
+    });
+    if (!current) {
+      throw internalError("Payment transfer record not found after submission");
+    }
+    if (current.status === "failed") {
+      throw failedTransferError(current);
+    }
+    if (isSuccessfulPaymentTransferStatus(current.status)) {
+      await onConcurrentChainVerdict?.(current);
+    }
+    return success(c, toPayload(current));
   }
   const message = error instanceof Error ? error.message : "Unknown transfer error";
   const answer = mapTransferExecutionError(error);
@@ -660,6 +702,7 @@ async function executeSponsoredTransfer(
   params: {
     sourceWallet: CustodyWallet;
     submissionStore: SignedSubmissionStore;
+    landingStatus: TransferLandingStatus;
     buildInstructions: (context: {
       signer: TransactionSigner;
       feePayer: Address;
@@ -681,14 +724,15 @@ async function executeSponsoredTransfer(
   }
 
   const rpc = createClusterRpc();
-  const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpc, "confirmed");
   const feePayment = createSponsorshipFeePayment(
     c.env,
     resolveRequestSponsorshipScope(c),
-    "payments.transfer"
+    "payments.transfer",
+    { custodyWalletId: params.sourceWallet.id }
   );
   const feePayer = await feePayment.getFeePayer();
   const instructions = await params.buildInstructions({ signer, feePayer, rpc });
+  const { blockhash, lastValidBlockHeight } = await getRecentBlockhash(rpc, "confirmed");
 
   const message = pipe(
     createTransactionMessage({ version: 0 }),
@@ -698,7 +742,10 @@ async function executeSponsoredTransfer(
     (m) => addSignersToTransactionMessage([signer], m)
   );
 
-  const partiallySigned = await partiallySignTransactionMessageWithSigners(message);
+  const partiallySigned = await signWithFreshBlockhash({
+    blockhash,
+    sign: () => partiallySignTransactionMessageWithSigners(message),
+  });
   const txEncoder = getTransactionEncoder();
   const txBytes = new Uint8Array(txEncoder.encode(partiallySigned));
   const signature = await submitSponsoredTransaction({
@@ -710,7 +757,7 @@ async function executeSponsoredTransfer(
   });
 
   const confirmation = await confirmTransaction(rpc, signature, {
-    commitment: "confirmed",
+    commitment: params.landingStatus,
   });
 
   if (confirmation.err) {
@@ -729,15 +776,17 @@ async function executeSolTransfer(
   sourceWallet: CustodyWallet,
   destinationAddress: Address,
   amount: string,
-  submissionStore: SignedSubmissionStore
+  submissionStore: SignedSubmissionStore,
+  landingStatus: TransferLandingStatus
 ): Promise<{ signature: string; slot: number | null; blockTime: string | null }> {
-  const lamports = parseDecimalAmount(amount, 9);
+  const lamports = parseTokenAmount(amount, SOL_DECIMALS);
   if (lamports <= 0n) {
     throw badRequest("Transfer amount must be greater than zero");
   }
   return executeSponsoredTransfer(c, {
     sourceWallet,
     submissionStore,
+    landingStatus,
     buildInstructions: async ({ signer }) => [
       getTransferSolInstruction({
         source: signer,
@@ -755,14 +804,16 @@ async function executeSplTransfer(
   mintAddress: Address,
   amount: string,
   submissionStore: SignedSubmissionStore,
-  source: SplTransferSource | undefined
+  source: SplTransferSource | undefined,
+  landingStatus: TransferLandingStatus
 ): Promise<{ signature: string; slot: number | null; blockTime: string | null }> {
   return executeSponsoredTransfer(c, {
     sourceWallet,
     submissionStore,
-    buildInstructions: async ({ signer, feePayer, rpc }) => {
+    landingStatus,
+    buildInstructions: async ({ signer, feePayer }) => {
       const { createDestinationAtaInstruction, transferInstruction } =
-        await buildSplTransferInstructions(rpc, {
+        await buildSplTransferInstructions({
           authority: signer,
           destination: destinationAddress,
           mint: mintAddress,
@@ -796,6 +847,18 @@ function replayTransferRow(c: AppContext, row: TransferRow): Response {
   if (row.status !== "failed") {
     return success(c, buildTransferReplayPayload(row));
   }
+  // Returned, not thrown: replayFromRecord marks the Response the finder builds.
+  return appErrorResponse(c, failedTransferError(row));
+}
+
+/**
+ * The error a failed transfer row answers with: the code its request recorded,
+ * or `TRANSACTION_FAILED` for a row the reconciler failed from the chain.
+ *
+ * @param row - A transfer row whose status is `failed`.
+ * @returns The error a replay of the row's key answers with.
+ */
+function failedTransferError(row: TransferRow): AppError {
   const recorded = row.provider_data[EXECUTION_FAILURE_KEY];
   const recordedCode =
     typeof recorded === "object" && recorded !== null && "code" in recorded
@@ -804,14 +867,10 @@ function replayTransferRow(c: AppContext, row: TransferRow): Response {
   // A row the reconciler failed from the chain records no code: it is a
   // transaction failure.
   const code = isErrorCode(recordedCode) ? recordedCode : "TRANSACTION_FAILED";
-  // Returned, not thrown: replayFromRecord marks the Response the finder builds.
-  return appErrorResponse(
-    c,
-    new AppError(
-      code,
-      `${row.error ?? "The transfer failed"}. This Idempotency-Key belongs to a transfer that failed; send the request again with a new Idempotency-Key to try again.`,
-      { transferId: row.id, status: row.status }
-    )
+  return new AppError(
+    code,
+    `${row.error ?? "The transfer failed"}. This Idempotency-Key belongs to a transfer that failed; send the request again with a new Idempotency-Key to try again.`,
+    { transferId: row.id, status: row.status }
   );
 }
 
@@ -865,6 +924,35 @@ function compareTransferRows(
   return createdAtComparison || right.id.localeCompare(left.id);
 }
 
+async function executeFireblocksTransfer(
+  c: AppContext,
+  transfer: TransferRow,
+  auditService: AuditService,
+  auditIntent: Awaited<ReturnType<AuditService["beginCritical"]>>
+) {
+  // Once claimed, an ambiguous provider response must never enter the local
+  // transaction failure/rebroadcast path. The durable provider intent owns recovery.
+  let updated: TransferRow;
+  try {
+    updated = await submitFireblocksTransfer(c.env, getPaymentsRepository(c), transfer);
+  } catch (error) {
+    await auditService.completeCritical(c, auditIntent, {
+      status: "failure",
+      metadata: { status: "failed" },
+    });
+    throw error;
+  }
+  if (updated.provider_reference || updated.status === "failed") {
+    await auditService.completeCritical(c, auditIntent, {
+      status: updated.status === "failed" ? "failure" : "success",
+      metadata: { fireblocksTransactionId: updated.provider_reference, status: updated.status },
+    });
+  }
+  if (updated.status === "failed")
+    throw transactionFailed(updated.error ?? "Fireblocks refused the transfer");
+  return success(c, { transfer: mapTransferRow(updated) });
+}
+
 export async function createTransfer(c: ValidatedBodyContext<typeof createTransferSchema>) {
   const body = c.req.valid("json");
   const { scope, operation, rampTransfer } = getAuthorized<TransferResolved>(c);
@@ -873,6 +961,17 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
   const fingerprint = getIdempotencyFingerprint(c);
   const idempotency =
     recordKey !== undefined && fingerprint !== undefined ? { key: recordKey, fingerprint } : null;
+  const fireblocks = await prepareFireblocksTransfer(
+    c.env,
+    scope.auth.organizationId,
+    requireProjectId(c),
+    operation
+  );
+  // Reject unsupported Fireblocks mints before attempting an unused Solana read.
+  // Before the row: a too-precise amount is the caller's 400, never a failed transfer.
+  await parseStaticPaymentAmount(operation.amount, assertValidAddress(operation.token, "token"));
+  if (fireblocks && body.transferId)
+    throw badRequest("Fireblocks native transfers currently support direct wallet payments only");
 
   const rampClaim = rampTransfer
     ? await updateOnchainTransferForRamp(c, {
@@ -898,6 +997,7 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
         status: "processing",
         initiatedByKeyId: scope.auth.id,
         idempotency,
+        providerData: fireblocks ? { fireblocksTransfer: fireblocks.intent } : undefined,
       });
 
   if (replayed) {
@@ -908,6 +1008,7 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
   markIdempotencyCommitted(c);
 
   const submissionStore = createTransferSignedSubmissionStore(getPaymentsRepository(c), transfer);
+  const landingStatus = transferLandingStatus(transfer.type);
   // The tamper-evident ledger admits the movement before any bytes can reach
   // the chain; a submission whose confirmation never lands leaves the intent
   // unresolved, which is exactly the state reconciliation pages on.
@@ -942,6 +1043,7 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
     });
     throw error;
   }
+  if (fireblocks) return executeFireblocksTransfer(c, transfer, auditService, auditIntent);
   try {
     if (isNativePaymentToken(operation.token)) {
       const solResult = await executeSolTransfer(
@@ -949,11 +1051,12 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
         operation.sourceWallet,
         operation.destinationAddress,
         operation.amount,
-        submissionStore
+        submissionStore,
+        landingStatus
       );
       const updated = resolveTransferUpdateResult(
         await updateTransferRecord(c, transfer, {
-          status: "confirmed",
+          status: landingStatus,
           signature: solResult.signature,
           slot: solResult.slot,
           blockTime: solResult.blockTime,
@@ -974,12 +1077,13 @@ export async function createTransfer(c: ValidatedBodyContext<typeof createTransf
       mintAddress,
       operation.amount,
       submissionStore,
-      rampClaim?.splSource
+      rampClaim?.splSource,
+      landingStatus
     );
 
     const updated = resolveTransferUpdateResult(
       await updateTransferRecord(c, transfer, {
-        status: "confirmed",
+        status: landingStatus,
         signature: result.signature,
         slot: result.slot,
         blockTime: result.blockTime,
@@ -1076,15 +1180,26 @@ const TRANSFER_TYPE_READ_ACTIONS = {
 } as const satisfies Record<TransferType, Action>;
 
 /**
+ * Whether this deployment discloses transfers of `type`: a ramp transfer only
+ * while the release channel runs Ramps (APE SOLA9-698).
+ */
+function isTransferTypeInChannel(c: AppContext, type: TransferType): boolean {
+  return !isRampTransferType(type) || isModuleInChannel(c, "ramps");
+}
+
+/**
  * The transfer types this caller may list: an explicitly requested type it
- * cannot read is refused, naming the read; a category or the default set is
- * narrowed to what it can read.
+ * cannot read, or whose module the release channel leaves out, is refused; a
+ * category or the default set is narrowed to what it can read.
  */
 function readableTransferTypes(
   c: AppContext,
   requested: readonly TransferType[] | undefined,
   candidates: readonly TransferType[]
 ): TransferType[] {
+  if ((requested ?? []).some((type) => !isTransferTypeInChannel(c, type))) {
+    assertModuleInChannel(c, "ramps");
+  }
   const unreadable = (requested ?? []).find(
     (type) => !callerMayPerform(c, TRANSFER_TYPE_READ_ACTIONS[type])
   );
@@ -1092,7 +1207,10 @@ function readableTransferTypes(
     const action = TRANSFER_TYPE_READ_ACTIONS[unreadable];
     throw missingAction(action);
   }
-  return candidates.filter((type) => callerMayPerform(c, TRANSFER_TYPE_READ_ACTIONS[type]));
+  return candidates.filter(
+    (type) =>
+      isTransferTypeInChannel(c, type) && callerMayPerform(c, TRANSFER_TYPE_READ_ACTIONS[type])
+  );
 }
 
 export async function listTransfers(c: AppContext) {
@@ -1132,6 +1250,9 @@ export async function listTransfers(c: AppContext) {
     requestedTypes.some((type) => !categoryTypes.includes(type as never))
   ) {
     throw badRequest("type must match the requested transfer category");
+  }
+  if (category === "ramp") {
+    assertModuleInChannel(c, "ramps");
   }
   const transferTypes = readableTransferTypes(
     c,
@@ -1355,6 +1476,19 @@ export async function listTransfers(c: AppContext) {
     transferRows = result.rows;
   }
 
+  // Reconcile only a bounded slice; independent reads share a 15s durable poll claim.
+  const pending = transferRows
+    .filter((row) => isFireblocksTransfer(row) && row.status === "processing")
+    .slice(0, 4);
+  const refreshed = await mapSettledWithConcurrency(pending, 4, (row) =>
+    refreshFireblocksTransfer(c.env, repo, row)
+  );
+  const byId = new Map(
+    refreshed.flatMap((result) =>
+      result.status === "fulfilled" ? [[result.value.id, result.value] as const] : []
+    )
+  );
+  transferRows = transferRows.map((row) => byId.get(row.id) ?? row);
   const transfers = transferRows.map(mapTransferRow);
   return paginated(c, transfers, { total, page, pageSize });
 }
@@ -1372,10 +1506,15 @@ export async function getTransfer(c: AppContext) {
     projectId: requireProjectId(c),
   });
 
-  // A row of a module the caller cannot read is not disclosed.
-  if (!row || !callerMayPerform(c, TRANSFER_TYPE_READ_ACTIONS[row.type])) {
+  // A row of a module the caller cannot read, or the release channel leaves out, is not disclosed.
+  if (
+    !row ||
+    !isTransferTypeInChannel(c, row.type) ||
+    !callerMayPerform(c, TRANSFER_TYPE_READ_ACTIONS[row.type])
+  ) {
     throw notFound("Transfer");
   }
 
-  return success(c, { transfer: mapTransferRow(row) });
+  const refreshed = await refreshFireblocksTransfer(c.env, repo, row);
+  return success(c, { transfer: mapTransferRow(refreshed) });
 }

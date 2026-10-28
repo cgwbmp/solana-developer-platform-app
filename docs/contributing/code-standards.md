@@ -31,12 +31,12 @@ Every on-chain path reads its cluster from the open cluster scope (`currentClust
 
 | Need | Use | Never |
 | -- | -- | -- |
-| Solana reads, builds and sends | `createClusterRpc()` (`@sdp/rpc/factory`) | `createRpc`, kit's `createSolanaRpc`, an RPC URL from env. Legacy `createRpc` survives only in the modules HOO-1879 exempts (Earn, DvP, issuance, Private Channels, Rings) |
+| Solana reads, builds and sends | `createClusterRpc()` (`@sdp/rpc/factory`), or `createClusterRpc({ timeoutMs })` for a client handed to a helper that sends without a signal | `createRpc`, kit's `createSolanaRpc`, an RPC URL from env. Legacy `createRpc` survives only in the modules HOO-1879 exempts (DvP, issuance, Private Channels, Rings) |
 | Wallet signature history | `createClusterHistoryRpc()`, observed transfers only | Reordering the pool anywhere else |
 | Helius DAS | `services/helius-das.service.ts` | A direct Helius call |
 | Open a scope | Project middleware, `/pay` context, the cron runner (`runInClusterScope`; tests may too) | Opening a scope in a service |
-| The Fee Payer's chain reads (fee price, settlement) | `sponsoredNetworkFee`, `getSponsoredTransaction`, `isSponsoredBlockhashValid` (`@sdp/fee-payment/chain-reads`) | `createKoraUpstreamRpc()` outside `@sdp/fee-payment`; the managed pool for budget reads |
-| A sponsor that signs | `createSponsorshipFeePayment(env, scope, movement)`, with `resolveRequestSponsorshipScope(c)` or `resolveProjectSponsorshipScope(env, owner)` (refuses a project from another environment) | `createKoraAdapter`, `KoraAdapter`, `KoraClient` (`pnpm check:value-movement` pins them) |
+| The Fee Payer's chain reads (fee price, settlement) | `priceSponsoredTransaction`, `getSponsoredTransaction`, `sponsoredFinalizedHeight`, `getSponsoredSignatureStatus` (`@sdp/fee-payment/chain-reads`) | `createKoraUpstreamRpc()` outside `@sdp/fee-payment`; the managed pool for budget reads |
+| A sponsor that signs | `createSponsorshipFeePayment(env, scope, movement, { custodyWalletId })` (the custody wallet that signs the sponsored transaction; null only when none does, as on `/pay`), with `resolveRequestSponsorshipScope(c)` or `resolveProjectSponsorshipScope(env, owner)` (refuses a project from another environment) | `createKoraAdapter`, `KoraAdapter`, `KoraClient` (`pnpm check:value-movement` pins them) |
 | Only the fee-payer address | `resolveSponsoredFeePayer(env, scope)` | Building a sponsor to read its address |
 | Send a sponsored transaction | `submitSponsoredTransaction({ feePayment, rpc: createClusterRpc(), transaction, lastValidBlockHeight, store })` | Kora's `signAndSendTransaction`; `signAsFeePayer` followed by your own send |
 
@@ -55,8 +55,8 @@ Kora simulates against its own Solana RPC (`KORA_<CLUSTER>_RPC_URL`); the budget
 **Sponsorship budget** (`apps/sdp-api/src/services/sponsorship-budget.service.ts`): every sponsored signature is admitted against lamport limits before Kora signs.
 
 - **Policies** exist per network (devnet, mainnet) at three scopes (global, organization, project), each with per-transaction, hourly and daily lamport limits. All three must allow the spend.
-- **The ceiling** is the message's network fee, priced on Kora's upstream, plus Kora's `max_allowed_lamports` when its policy lets the fee payer transfer lamports.
-- **A reservation** (a Postgres ledger row plus Redis window counters) moves `reserved → signed → submitted → committed`. It is `released` when the send is provably refused, and `charged_unknown` when the outcome can't be proven: counted, never refunded.
+- **The ceiling** is the message's network fee, priced on Kora's upstream, plus Kora's `max_allowed_lamports`, always: the policy read is not bound to the signature, so the reservation assumes the worst outflow Kora allows and reconciliation settles the actual lamports.
+- **A reservation** (a Postgres ledger row plus Redis window counters) moves `reserved → signed → submitted → committed`. It is `released` when the send is provably refused or the transaction provably never landed (the `finalized` block height passed the reservation's last valid block height and its signature is absent from history), and `charged_unknown` when the outcome can't be proven: counted, never refunded.
 - **The reconciler cron** settles actual lamports from the chain through the chain reads. A ledger or Redis failure trips the network's breaker, which refuses sponsorship until it recovers. A reservation pins Kora's signer and policy fingerprint; a mismatch fails closed.
 
 ## Platform obligations
@@ -69,7 +69,7 @@ A change that triggers one of these must handle it.
 - **Encryption at rest.** Credentials, key material, and sensitive provider data round-trip through the KMS-backed crypto (`apps/sdp-api/src/lib/gcp/kms-client.ts`; `lib/spc-credential-crypto.ts` is the pattern), never a plaintext column. SSN, CDD, and bank details are never persisted: pass them through to the provider just in time.
 - **Kora budgets.** Anything new that Kora sponsors (fees, ATA rent, a new sponsored instruction) is admitted and debited through `apps/sdp-api/src/services/sponsorship-budget.service.ts`, reached only through the entry points in "RPC and fee payment".
 - **Metered quota.** A route that costs real money or provider calls (signing, provider-backed, RPC-heavy) mounts behind `meteredQuota` (`apps/sdp-api/src/middleware/metered-quota.ts`) like the existing paid routes.
-- **Release-channel gating.** A nav item, tab, filter, chip, or option list naming SDP modules or ramp providers comes from the channel-capped flags (`enabledTransactionModules(flags)`, `getEnabledRampProviders()`, `isModuleInDeploymentReleaseChannel`), never a raw tuple from `@sdp/types` or a copied list. A `*.redesign.tsx` page keeps its legacy twin's gating. A new API route sits behind `requireModule`. CI runs `experimental`, so a gating test renders with stable-capped flags. See `docs/decisions/0005-release-channels.md`.
+- **Release-channel gating.** A nav item, tab, filter, chip, or option list naming SDP modules or ramp providers comes from the channel-capped flags (`enabledTransactionModules(flags)`, `getEnabledRampProviders()`, `isModuleInDeploymentReleaseChannel`), never a raw tuple from `@sdp/types` or a copied list. A new API route sits behind `requireModule`. CI runs `experimental`, so a gating test renders with stable-capped flags. See `docs/decisions/0005-release-channels.md`.
 
 ## TypeScript
 
@@ -118,7 +118,8 @@ A change that triggers one of these must handle it.
   lookup) and has a status-pull entry and an abandonment horizon in
   `apps/sdp-api/src/services/jobs/sweep-ramp-transfer-statuses.ts`;
   typecheck fails until it does.
-- Provider instances come only from `RAMP_PROVIDER_CLIENTS`. A second instance breaks the webhook tests' `vi.spyOn` mocks.
+- Provider instances come only from `RAMP_PROVIDER_CLIENTS`, typed as the contract; a caller narrows to a direction with `rampClientFor`. A second instance breaks the webhook tests' `vi.spyOn` mocks.
+- Adapters get `RampRuntimeContext` (`{ mode, cluster, credentials }`) and never the process env. The API resolves the keys once (`apps/sdp-api/src/services/ramps/runtime.ts`) for every call, availability check and discovery run. Outside the package, only a provider's webhook processor imports its modules, and only its status mapping (`packages/sdp-payments/src/ramps/boundaries.test.ts`).
 - Provider clients never access the database. Route handlers and background jobs access it through repositories.
 
 ## Dashboard (`apps/sdp-web`)

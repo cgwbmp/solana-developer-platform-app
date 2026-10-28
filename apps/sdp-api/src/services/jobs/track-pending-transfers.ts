@@ -37,9 +37,11 @@ import {
   createSystemPaymentsRepository,
   createSystemPaymentTransferBatchesRepository,
 } from "@/db/repositories/repository-factory";
+import { mapSettledWithConcurrency } from "@/lib/concurrency";
 import { internalError } from "@/lib/errors";
 import { getLogger } from "@/runtime/logger";
 import { logEvent } from "@/runtime/money-path-events";
+import { refreshFireblocksTransfer } from "@/services/payments/fireblocks-transfer";
 import type { Env } from "@/types/env";
 
 // Allow 5 minutes before treating a signature-less "processing" transfer as stuck.
@@ -158,6 +160,16 @@ async function applyOnChainVerdict(
       return true;
     }
 
+    // An error seen only at "processed" may be on a fork the cluster drops, and
+    // the same signed transaction can still land; failing the row here would
+    // let a retry pay twice (APE SOLA9-708).
+    const committed =
+      status.confirmationStatus !== null &&
+      commitmentComparator(status.confirmationStatus, "confirmed") >= 0;
+    if (!committed) {
+      return false;
+    }
+
     if (status.err) {
       await updateTerminalTransfer(env, repo, transfer, {
         transferId: transfer.id,
@@ -180,20 +192,14 @@ async function applyOnChainVerdict(
         updatedAt: nowIso,
       });
       return true;
-    } else if (
-      status.confirmationStatus !== null &&
-      commitmentComparator(status.confirmationStatus, "confirmed") >= 0
-    ) {
-      await updateTerminalTransfer(env, repo, transfer, {
-        transferId: transfer.id,
-        status: "confirmed",
-        slot: Number(status.slot),
-        updatedAt: nowIso,
-      });
-      return true;
     }
-    // "processed" confirmation is too weak to record as confirmed — skip.
-    return false;
+    await updateTerminalTransfer(env, repo, transfer, {
+      transferId: transfer.id,
+      status: "confirmed",
+      slot: Number(status.slot),
+      updatedAt: nowIso,
+    });
+    return true;
   } catch (err) {
     getLogger().error(
       {
@@ -215,6 +221,18 @@ export async function trackPendingTransfers(env: Env): Promise<void> {
   await syncProcessingTransfersOnChain(env, repo, nowIso);
   await finalizeConfirmedTransfers(repo, now, nowIso);
   await failStrandedTransferBatches(env, now);
+
+  // Human approvals have no five-minute signing timeout. This path only reads
+  // the provider; a missing/ambiguous create response can never trigger a POST.
+  const fireblocks = await repo.listTransfersByStatus({
+    environment: currentClusterScope().environment,
+    statuses: ["processing"],
+    fireblocks: true,
+    limit: 50,
+  });
+  await mapSettledWithConcurrency(fireblocks, 5, (transfer) =>
+    refreshFireblocksTransfer(env, repo, transfer)
+  );
 }
 
 /** Past any request's lifetime (renewal cap plus lease), with room to spare. */
@@ -250,7 +268,9 @@ async function failStrandedTransferBatches(env: Env, now: Date): Promise<void> {
  * Upgrade-only by design: a confirmed transfer whose status reads null or err
  * keeps its status and rotates to the back of the poll queue — the funds were
  * already observed on chain, so this pass never introduces a new failure
- * path. Every finalized row — batch parents included — upgrades through one
+ * path. Each such read is logged as `sdp_api_payment_finalization_unproven`
+ * instead: a null can be an honest archival miss, so it is not proof of a
+ * fork. Every finalized row — batch parents included — upgrades through one
  * set-based update guarded on still being confirmed (never
  * settleTransferBatch, which only claims from processing and whose recipient
  * settlement already ran): the upgrade changes no recipient or batch state.
@@ -366,17 +386,33 @@ async function finalizeConfirmedTransfers(
 
   await repo.advanceConfirmedTransfers({ polled, updatedAt: nowIso });
 
+  for (const [i, transfer] of confirmedTransfers.entries()) {
+    const status = statuses[i];
+    if (status && !status.err) continue;
+    logEvent("warn", {
+      event: "sdp_api_payment_finalization_unproven",
+      flow: "reconciler",
+      reason: status ? "transaction_error" : "status_missing",
+      organization_id: transfer.organization_id,
+      project_id: transfer.project_id,
+      transfer_id: transfer.id,
+      transfer_type: transfer.type,
+      signature: transfer.signature,
+      confirmed_at: transfer.confirmed_at,
+      transaction_error: status ? JSON.stringify(status.err) : null,
+    });
+  }
+
   const finalized = polled.filter((transfer) => transfer.finalized);
   for (const transfer of finalized) {
-    getLogger().info(
-      {
-        transfer_id: transfer.transferId,
-        organization_id: transfer.organizationId,
-        signature: transfer.signature,
-        slot: transfer.slot,
-      },
-      "trackPendingTransfers: transfer finalized"
-    );
+    logEvent("info", {
+      event: "sdp_api_payment_chain_finality_observed",
+      observation_source: "rpc",
+      transfer_id: transfer.transferId,
+      organization_id: transfer.organizationId,
+      signature: transfer.signature,
+      slot: transfer.slot,
+    });
   }
   if (finalized.length > 0) {
     getLogger().info(
@@ -404,6 +440,7 @@ async function recoverStuckProcessingTransfers(
     statuses: ["processing"],
     types: WALLET_TRANSFER_TYPES,
     hasSignature: false,
+    fireblocks: false,
     updatedBefore: cutoff,
     limit: MAX_SIGNATURES_PER_BATCH,
   });
@@ -444,6 +481,7 @@ async function syncProcessingTransfersOnChain(
       statuses: ["processing"],
       types: WALLET_TRANSFER_TYPES,
       hasSignature: true,
+      fireblocks: false,
       limit: MAX_SIGNATURES_PER_BATCH,
     })
   );
@@ -630,8 +668,7 @@ async function reconcileSignedSubmissionCacheMisses(
 function unresolvedReasonForStatus(
   status: SignatureStatusInfo
 ): "processed_only" | "verdict_write_failed" {
-  return !status.err &&
-    status.confirmationStatus !== null &&
+  return status.confirmationStatus !== null &&
     commitmentComparator(status.confirmationStatus, "confirmed") < 0
     ? "processed_only"
     : "verdict_write_failed";

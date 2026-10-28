@@ -1,6 +1,7 @@
 import type { RateLimitTier } from "@sdp/types/api-keys";
 import type { Context, Next } from "hono";
-import { extractApiKey, looksLikeApiKey } from "@/lib/api-key-format";
+import { routePath } from "hono/route";
+import { presentsApiKey } from "@/lib/api-key-format";
 import { BoundedLruMap } from "@/lib/bounded-lru";
 import { verifyClerkJwtForRequest } from "@/lib/clerk-token";
 import { getClientIp } from "@/lib/client-ip";
@@ -19,45 +20,7 @@ export const RATE_LIMIT_TIERS = {
   unlimited: 10_000,
 } as const satisfies Record<RateLimitTier, number>;
 
-export const ANONYMOUS_MAX_REQUESTS = 20;
-export const ANONYMOUS_EARN_CATALOGUE_MAX_REQUESTS = 120;
-export const ANONYMOUS_EARN_BUILD_MAX_REQUESTS = 30;
-
-const ANONYMOUS_EARN_BUILD_PATHS = new Set([
-  "/v1/earn/vault-deposit-previews",
-  "/v1/earn/external-wallet/deposit-transactions",
-  "/v1/earn/external-wallet/withdrawal-previews",
-  "/v1/earn/external-wallet/withdrawal-transactions",
-]);
-
-function anonymousRequestLimit(c: Context<{ Bindings: Env }>): {
-  identifierPrefix: string | null;
-  maxRequests: number;
-  metricTier: string;
-} {
-  if (
-    c.req.method === "GET" &&
-    (c.req.path === "/v1/earn/strategies" || c.req.path.startsWith("/v1/earn/strategies/"))
-  ) {
-    return {
-      identifierPrefix: "anonymous:earn:catalogue",
-      maxRequests: ANONYMOUS_EARN_CATALOGUE_MAX_REQUESTS,
-      metricTier: "anonymous_earn_catalogue",
-    };
-  }
-  if (c.req.method === "POST" && ANONYMOUS_EARN_BUILD_PATHS.has(c.req.path)) {
-    return {
-      identifierPrefix: "anonymous:earn:build",
-      maxRequests: ANONYMOUS_EARN_BUILD_MAX_REQUESTS,
-      metricTier: "anonymous_earn_build",
-    };
-  }
-  return {
-    identifierPrefix: null,
-    maxRequests: ANONYMOUS_MAX_REQUESTS,
-    metricTier: "anonymous_default",
-  };
-}
+const ANONYMOUS_MAX_REQUESTS = 20;
 
 /**
  * Per-user-per-org ceiling for dashboard traffic (Clerk JWT). Dashboard
@@ -251,6 +214,23 @@ export class InProcessRateLimiter {
     maxRequests: number,
     windowMs: number
   ): void {
+    const { windowStart, count } = this.assertNotExhausted(c, identifier, maxRequests, windowMs);
+    this.windows.set(identifier, { windowStart, count: count + 1 });
+  }
+
+  /**
+   * Refuses, as `enforce` would, an identifier that has used `maxRequests` in
+   * the current window, without counting this call: for a limit that counts
+   * only failures, checked before the work that might fail.
+   *
+   * @throws AppError RATE_LIMITED (429) with a Retry-After header.
+   */
+  assertNotExhausted(
+    c: Context<{ Bindings: Env }>,
+    identifier: string,
+    maxRequests: number,
+    windowMs: number
+  ): { windowStart: number; count: number } {
     const now = Date.now();
     const windowStart = Math.floor(now / windowMs) * windowMs;
     const current = this.windows.get(identifier);
@@ -263,14 +243,14 @@ export class InProcessRateLimiter {
           event: "sdp_api_rate_limit_rejected",
           tier: `${this.name}_in_process_fallback`,
           method: c.req.method,
-          route: c.req.path,
+          route: routePath(c, -1) || "unmatched",
           limit: maxRequests,
         },
         "In-process fallback rate limit rejected request"
       );
       throw rateLimited(`Rate limit exceeded. Retry after ${retryAfter} seconds.`);
     }
-    this.windows.set(identifier, { windowStart, count: count + 1 });
+    return { windowStart, count };
   }
 
   /** Forget every count, so a test starts from an empty instance. */
@@ -439,7 +419,7 @@ export async function enforceRateLimit(
         event: "sdp_api_rate_limit_rejected",
         tier: options.metricTier ?? "default",
         method: c.req.method,
-        route: c.req.path,
+        route: routePath(c, -1) || "unmatched",
         limit: maxRequests,
       },
       "Rate limit rejected request"
@@ -488,22 +468,15 @@ export function skipRateLimitPaths(...paths: string[]) {
       // limit below, which is what bounds signature-spray against the JWKS check.
     }
 
-    const apiKey = extractApiKey(c);
-    const presentsApiKey = apiKey !== null && looksLikeApiKey(apiKey);
-
     const clientIp = getClientIp(c) ?? "unknown";
-    if (presentsApiKey) {
+    if (presentsApiKey(c)) {
       await enforceRateLimit(c, clientIp, KEYED_IP_BACKSTOP_MAX_REQUESTS, {
         fallback: keyedIpBackstopFallback,
       });
     } else {
-      const limit = anonymousRequestLimit(c);
-      await enforceRateLimit(
-        c,
-        limit.identifierPrefix ? `${limit.identifierPrefix}:ip:${clientIp}` : clientIp,
-        limit.maxRequests,
-        { metricTier: limit.metricTier }
-      );
+      await enforceRateLimit(c, clientIp, ANONYMOUS_MAX_REQUESTS, {
+        metricTier: "anonymous_default",
+      });
     }
     await next();
   };

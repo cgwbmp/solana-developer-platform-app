@@ -43,6 +43,7 @@
       "transferCancellationFailed": "Transfer cancellation failed ({status}).",
       "rampEstimateRequestFailed": "Ramp estimate request failed ({status}).",
       "rampEstimateMissing": "Ramp estimate response is missing estimates.",
+      "rampEstimateInvalidRate": "The provider's estimate has no usable exchange rate.",
       "walletBalancesRequestFailed": "Wallet balances request failed ({status}).",
       "walletBalancesMissing": "Wallet balances response is missing balance details.",
       "transferRequestFailed": "Transfer request failed ({status}).",
@@ -88,7 +89,7 @@
     "cancelTransaction": {
       "ariaLabel": "Cancel transaction",
       "title": "Cancel this transaction?",
-      "description": "This transaction has already been started. If you cancel now you'll leave the flow.",
+      "description": "This cancels the quote with the provider. Nothing has been sent yet, so no money moves.",
       "keepGoing": "Keep going",
       "cancel": "Cancel transaction"
     },
@@ -99,6 +100,7 @@
     },
     "ramps": {
       "max": "MAX",
+      "balanceUnread": "Balance unavailable",
       "recentTransfersRequestFailed": "Recent transfers request failed.",
       "recentTransfers": "Recent Transfers",
       "noRecentTransactions": "No recent transactions.",
@@ -298,7 +300,72 @@
       "cannotBeUndone": "This cannot be undone.",
       "cannotBeUndoneBody": "Once the provider takes the payment, only they can reverse it.",
       "memoStep": "Memo",
-      "cancelDeposit": "Cancel deposit"
+      "cancelDeposit": "Cancel deposit",
+      "phase": {
+        "providerFallback": "the provider",
+        "buy": {
+          "checkoutTitle": "Complete payment in {provider}",
+          "checkoutDescription": "Finish paying in the {provider} window. This updates on its own when {provider} confirms the payment.",
+          "awaitingFundsTitle": "Waiting for your payment",
+          "awaitingFundsDescription": "Send the funds with the instructions shown. This updates when {provider} receives them.",
+          "providerDeliveringTitle": "Payment received",
+          "providerDeliveringDescription": "{provider} has the payment and is sending the {token} to the wallet.",
+          "confirmingDeliveryTitle": "Confirming delivery",
+          "confirmingDeliveryDescription": "{provider} reports the {token} sent. SDP is confirming they reached the wallet onchain.",
+          "completedTitle": "Deposit complete",
+          "completedDescription": "The {token} reached the wallet, and SDP verified the delivery onchain.",
+          "failedTitle": "Deposit failed",
+          "failedDescription": "{provider} reported that this purchase failed. Nothing was delivered to the wallet.",
+          "failedWithReasonDescription": "{provider} reported that this purchase failed: {reason}"
+        },
+        "sell": {
+          "checkoutTitle": "Confirm the sale in {provider}",
+          "checkoutDescription": "Add the payout details and confirm the sale in the {provider} window. Nothing leaves the wallet until you send it.",
+          "readyToSendTitle": "Ready to send",
+          "readyToSendDescription": "{provider} is ready for {amount}. Send it to start the payout.",
+          "awaitingInstructionTitle": "Waiting for {provider}",
+          "awaitingInstructionDescription": "{provider} hasn't given a deposit address for this sale yet. If it asks you to accept a new quote, do that in its window.",
+          "sendingDepositTitle": "Sending {token}",
+          "sendingDepositDescription": "SDP is sending the {token} to {provider}.",
+          "payingOutTitle": "Paying out",
+          "payingOutDescription": "The {token} reached {provider}, which is paying the bank. Bank payouts take hours, not seconds.",
+          "payoutReportedTitle": "Payout reported",
+          "payoutReportedDescription": "{provider} reports paying out {payout}. SDP is confirming the deposit finalized onchain.",
+          "completedTitle": "Payout sent",
+          "completedDescription": "{provider} reports the payout sent, and the deposit finalized onchain.",
+          "completedWithPayoutDescription": "{provider} paid out {payout}, and the deposit finalized onchain.",
+          "failedTitle": "Payout failed",
+          "failedDescription": "{provider} reported that this sale failed.",
+          "failedWithReasonDescription": "{provider} reported that this sale failed: {reason}"
+        },
+        "review": {
+          "buyTitle": "Delivery needs review",
+          "buyAmountMismatch": "{provider} reports a different amount than the wallet received. SDP is holding this deposit until {provider} reports again.",
+          "buyAmountMismatchAmounts": "{provider} reports {reported} delivered, but the wallet received {observed}. SDP is holding this deposit until {provider} reports again.",
+          "buyNotDelivered": "The transaction {provider} reported sent nothing to this wallet. SDP is holding this deposit for review.",
+          "buyTransactionFailed": "The delivery transaction {provider} reported failed onchain. SDP is holding this deposit for review.",
+          "buyPredatesTransfer": "{provider} reported a transaction from before this deposit started. SDP is holding it for review.",
+          "buyNotFound": "SDP can't find the transaction {provider} reported yet. It keeps checking, and the deposit completes once it lands.",
+          "buyReportMismatch": "{provider} reported a delivery to a different wallet. SDP is holding this deposit for review.",
+          "sellTitle": "Payout needs review",
+          "sellTransactionFailed": "The deposit SDP sent failed onchain, so nothing reached {provider}. SDP is holding this payout for review.",
+          "sellReportMismatch": "{provider}'s report doesn't match the deposit SDP sent. SDP is holding this payout for review.",
+          "badge": "Needs review"
+        }
+      },
+      "sendConfirm": {
+        "title": "Send {amount}?",
+        "description": "SDP signs this from the wallet and sends it to the deposit address {provider} gave for this sale. A sent deposit can't be recalled.",
+        "to": "To {provider}",
+        "from": "From",
+        "notYet": "Not yet"
+      },
+      "sendRefused": "Couldn't send the deposit",
+      "startNewPayout": "Start a new payout",
+      "cancelPayout": "Cancel payout",
+      "rateLine": "1 {asset} = {rate} {fiat}",
+      "youPayPlusFees": "{amount} plus the provider's fees",
+      "youPayFeesIncluded": "Includes the provider's fees"
     },
     "onchainSend": {
       "noAssets": "This wallet has no assets available to send.",
@@ -330,7 +397,16 @@
       "transferFailed": "Transfer failed.",
       "transferSuccess": "Your transfer was sent successfully.",
       "transferStatus": "Status: {status}",
-      "viewOnExplorer": "View on explorer"
+      "viewOnExplorer": "View on explorer",
+      "fireblocksReview": "Approve this payment in Fireblocks. Your source vault pays the network fee in SOL, including for USDC. The destination must be permitted by your Fireblocks one-time-address policy. The memo is a payment note, not an on-chain memo.",
+      "fireblocksPending": "Payment submitted to Fireblocks. Review and approve it there; SDP will update its status after signing and confirmation.",
+      "fireblocksUnknown": "SDP is checking whether Fireblocks received this payment. Check its transaction details before starting another payment.",
+      "viewTransaction": "View transaction",
+      "fireblocksTransactionId": "Fireblocks transaction ID",
+      "fireblocksStatus": "Fireblocks status",
+      "fireblocks": "Fireblocks",
+      "whitelistWarning": "This address is not whitelisted in Fireblocks.",
+      "whitelistDescription": "Add {address} for {asset} in Fireblocks, or use an allowed one-time transfer. “Don’t show again” applies to this project on this browser."
     },
     "onchainReceive": {
       "wallet": "Wallet",
@@ -816,7 +892,8 @@
       "cryptoToReceive": "Crypto to receive",
       "received": "Received",
       "credited": "Credited",
-      "depositTx": "Deposit tx"
+      "depositTx": "Deposit tx",
+      "quotedPayout": "Quoted payout"
     },
     "requestFailed": "Request failed.",
     "submitting": "Submitting...",
@@ -1438,17 +1515,20 @@
       "why": {
         "pending": "Submitted. Usually settles in under a minute.",
         "processing": "Handed to the network. Not confirmed yet.",
-        "processingProvider": "{provider} has the money and is buying. The tokens land when it releases them.",
         "awaitingPayment": "Waiting on the other side.",
         "settling": "The provider holds the tokens and is paying the bank. Bank rails, not Solana, so this is hours.",
-        "settlingProvider": "{provider} holds the {token} and is paying the bank. Bank rails, not Solana, so this is hours.",
         "confirmed": "One block in. Not irreversible until it finalizes.",
         "finalized": "Irreversible.",
         "completed": "The provider released the tokens and the wallet has them. The Solana leg finalized.",
-        "completedProvider": "{provider} released the tokens and the wallet has them. The Solana leg finalized.",
         "failed": "It did not go through. Nothing moved.",
         "canceled": "Canceled before it was submitted. Nothing moved.",
         "expired": "The quote expired before it was paid. Nothing moved."
+      },
+      "sdpTransactionId": "SDP transaction ID",
+      "saleOf": "for {amount}",
+      "openSale": {
+        "title": "Deposit",
+        "depositAmount": "Amount to send"
       }
     },
     "requestDetail": {
@@ -1514,6 +1594,21 @@
         }
       }
     },
-    "noTransactions": "No transactions found yet."
+    "noTransactions": "No transactions found yet.",
+    "fireblocksPolicy": {
+      "missing": "No matching Fireblocks transfer policy was found. Set up a transfer rule in Fireblocks before sending.",
+      "blocked": "A Fireblocks transfer policy blocks this payment. Review the rule in Fireblocks before sending.",
+      "unknown": "SDP could not determine whether Fireblocks allows this payment. Review your transfer policy in Fireblocks.",
+      "permissions": "Your Fireblocks API user cannot read policies. Check in Fireblocks that a transfer rule allows this payment.",
+      "recheck": "Check again",
+      "openFireblocks": "Open Fireblocks",
+      "configure": "Configure a Transfer policy in Fireblocks for this API user, source vault, destination and asset, with your approvers and a designated human signer. SDP cannot inspect policies using the recommended Editor role."
+    },
+    "fireblocksWarnings": {
+      "suppress": "Don’t show again",
+      "dismiss": "Dismiss",
+      "scope": "Hide these warnings for this project on this browser.",
+      "saveFailed": "Couldn’t save this preference. Check that browser storage is enabled."
+    }
   }
 }

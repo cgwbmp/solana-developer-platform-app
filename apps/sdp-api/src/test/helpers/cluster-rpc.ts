@@ -47,7 +47,7 @@ export type JsonRpcResult =
   | { readonly [field: string]: JsonRpcResult };
 
 /** One JSON-RPC request that reached a cluster's endpoint, genesis probes included. */
-export interface ClusterRpcCall {
+interface ClusterRpcCall {
   cluster: SolanaCluster;
   method: string;
 }
@@ -190,6 +190,25 @@ const jsonRpcRequestWithParamsSchema = jsonRpcRequestSchema.extend({
   params: z.array(z.unknown()),
 });
 
+/**
+ * The id, method and params of one JSON-RPC request a suite's own `fetch` stub received, for
+ * suites that stub endpoints {@link installClusterRpcStub} cannot: several per cluster, or a fresh
+ * pool per test.
+ *
+ * @param init - The fetch options kit passed.
+ * @returns The parsed request.
+ * @throws Error when the fetch carried no string body.
+ * @throws ZodError when the body is not one JSON-RPC request.
+ */
+export function parseJsonRpcRequest(
+  init: Parameters<typeof fetch>[1]
+): z.infer<typeof jsonRpcRequestWithParamsSchema> {
+  if (init === undefined || typeof init.body !== "string") {
+    throw new Error("Expected a JSON-RPC body on the stubbed fetch");
+  }
+  return jsonRpcRequestWithParamsSchema.parse(JSON.parse(init.body));
+}
+
 const signatureStatusesParamsSchema = z.union([
   z.tuple([z.array(z.string())]),
   z.tuple([z.array(z.string()), z.object({ searchTransactionHistory: z.literal(true) })]),
@@ -262,9 +281,24 @@ export function signatureStatusesRead(request: ClusterRpcRequest): SignatureStat
 export function signatureStatusesReply(
   statuses: readonly (StubSignatureStatus | null)[]
 ): ClusterRpcReply {
+  return signatureStatusesReplyAt(1, statuses);
+}
+
+/**
+ * A `getSignatureStatuses` answer from a node that has processed through `contextSlot`, listing
+ * `statuses` in request order.
+ *
+ * @param contextSlot - The slot the answering node reports its view at.
+ * @param statuses - Each requested signature's status, or null when the node has none.
+ * @returns The reply to return from a {@link ClusterRpcResponder.respond} responder.
+ */
+export function signatureStatusesReplyAt(
+  contextSlot: number,
+  statuses: readonly (StubSignatureStatus | null)[]
+): ClusterRpcReply {
   return {
     result: {
-      context: { slot: 1 },
+      context: { slot: contextSlot },
       value: statuses.map((status) =>
         status === null
           ? null
@@ -333,6 +367,25 @@ export function installClusterRpcResponder(): ClusterRpcResponder {
   };
 }
 
+/**
+ * A `getEpochInfo` result for a chain tip at `absoluteSlot` and `blockHeight`, in epoch 0.
+ *
+ * @param tip - The tip the answering node reports.
+ * @param tip.absoluteSlot - Its slot.
+ * @param tip.blockHeight - Its block height.
+ * @returns The JSON-RPC `result` to pass to {@link ClusterRpcStub.answer}.
+ */
+export function epochInfoResult(tip: { absoluteSlot: number; blockHeight: number }): JsonRpcResult {
+  return {
+    absoluteSlot: tip.absoluteSlot,
+    blockHeight: tip.blockHeight,
+    epoch: 0,
+    slotIndex: tip.absoluteSlot,
+    slotsInEpoch: 432_000,
+    transactionCount: null,
+  };
+}
+
 /** A jsonParsed SPL token account a stubbed `getTokenAccountsByOwner` answers with. */
 export interface StubTokenAccount {
   pubkey: string;
@@ -395,20 +448,6 @@ export function systemAccountInfoResult(slot: number, lamports: number): JsonRpc
       rentEpoch: 0,
       space: 0,
     },
-  };
-}
-
-/**
- * A `getTokenSupply` result for a mint with no supply yet, which is all a decimals read needs.
- *
- * @param slot - The context slot the answer claims.
- * @param decimals - The mint's decimals.
- * @returns The JSON-RPC `result` to pass to {@link ClusterRpcStub.answer}.
- */
-export function tokenSupplyResult(slot: number, decimals: number): JsonRpcResult {
-  return {
-    context: { slot },
-    value: { amount: "0", decimals, uiAmount: 0, uiAmountString: "0" },
   };
 }
 

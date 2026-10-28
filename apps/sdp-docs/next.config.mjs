@@ -1,4 +1,3 @@
-import "@sdp/env-config/tls-trust";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createMDX } from "fumadocs-mdx/next";
@@ -55,7 +54,12 @@ const nextConfig = {
         source: "/docs/images/:path*",
         destination: "/images/:path*",
       },
-      // Serve /docs/:slug.md as the markdown representation of each docs page
+      // Serve /docs/:slug.md as the markdown representation of each docs page,
+      // and /docs.md as the home's
+      {
+        source: "/docs.md",
+        destination: "/api/docs-md",
+      },
       {
         source: "/docs/:slug*.md",
         destination: "/api/docs-md/:slug*",

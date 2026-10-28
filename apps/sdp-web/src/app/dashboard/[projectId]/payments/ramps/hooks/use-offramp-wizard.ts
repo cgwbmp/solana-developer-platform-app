@@ -18,12 +18,13 @@ import {
   fetchTransferById,
 } from "@/app/dashboard/[projectId]/payments/payments-workspace.data";
 import { submitOfframpDeposit } from "@/app/dashboard/[projectId]/payments/ramps/offramp-deposit";
-import { getRampTransferState } from "@/app/dashboard/[projectId]/payments/ramps/ramp-transfer-state";
+import { rampTransferPollInterval } from "@/app/dashboard/[projectId]/payments/ramps/ramp-phase";
 import {
   sourceWalletSchema,
   withdrawAmountSchema,
   withdrawSelectionSchema,
 } from "@/app/dashboard/[projectId]/payments/ramps/schema";
+import { exceedsWalletBalance } from "@/app/dashboard/[projectId]/payments/ramps/wallet-options";
 import {
   memoSummaryDetails,
   optionalDetail,
@@ -35,6 +36,8 @@ import { useDashboardWorkspace } from "@/contexts/dashboard-workspace-context";
 import type { MessageKey } from "@/i18n/messages";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import type { TranslationValues } from "@/i18n/translate";
+import { demoRampPairs } from "@/lib/payments-demo/demo-ramp-assets";
+import { usePaymentsDemo } from "@/lib/payments-demo/payments-demo-context";
 import { offrampPairs } from "@/lib/ramps";
 import { type RampWizardStep, type UseRampWizardProps, useRampWizard } from "./use-ramp-wizard";
 
@@ -76,12 +79,14 @@ function getOfframpRequirementsStep(t: Translate): RampWizardStep<OfframpStepId>
 
 export function useOfframpWizard(props: UseRampWizardProps) {
   const { sdpEnvironment } = useDashboardWorkspace();
+  const demo = usePaymentsDemo();
   const t = useTranslations();
   const locale = useLocale();
   const {
     trigger: triggerCreateTransfer,
     data: onchainSendResult,
     isMutating: onchainSendLoading,
+    error: onchainSendError,
     reset: resetCreateTransfer,
   } = useSWRMutation(
     paymentsQueryKeys.createTransfer(),
@@ -91,7 +96,7 @@ export function useOfframpWizard(props: UseRampWizardProps) {
   );
 
   const wizard = useRampWizard<OfframpStepId>(props, {
-    pairs: offrampPairs(sdpEnvironment, props.enabledRampProviders),
+    pairs: demoRampPairs(offrampPairs(sdpEnvironment, props.enabledRampProviders), demo),
     steps: getOfframpSteps(t),
     stepSchemas: { WALLET: sourceWalletSchema, WITHDRAW: withdrawAmountSchema },
     quoteStepId: "MEMO",
@@ -132,10 +137,11 @@ export function useOfframpWizard(props: UseRampWizardProps) {
     transferStatusKey,
     ([, transferId]): Promise<PaymentTransferSummary> => fetchTransferById({ transferId }, t),
     {
-      refreshInterval: (transfer) =>
-        transfer && getRampTransferState(transfer.status).terminal ? 0 : 3000,
-      revalidateOnFocus: true,
-      dedupingInterval: 0,
+      // A fresh function each render re-arms SWR's timer with the latest transfer.
+      refreshInterval: (transfer) => rampTransferPollInterval(transfer),
+      // The interval keeps it current; a focus read on top only doubles the calls.
+      revalidateOnFocus: false,
+      dedupingInterval: 2_000,
     }
   );
 
@@ -217,8 +223,16 @@ export function useOfframpWizard(props: UseRampWizardProps) {
     );
   };
 
+  // The amount hint turns red over the balance; the step must not continue past it either.
+  const overBalance = exceedsWalletBalance(
+    wizard.selectedWallet,
+    offrampCryptoToken,
+    wizard.fields.amount
+  );
+
   return {
     ...wizard,
+    canProceed: wizard.canProceed && !(wizard.currentStepId === "WITHDRAW" && overBalance),
     sourceWalletHint:
       signingUnavailable && !onchainSendResult ? t("DashboardPayments.signingUnavailable") : null,
     summaryDetails,
@@ -230,6 +244,7 @@ export function useOfframpWizard(props: UseRampWizardProps) {
     canSendOnchain,
     onchainSendLoading,
     onchainSendResult: onchainSendResult ?? null,
+    onchainSendError: onchainSendError instanceof Error ? onchainSendError.message : null,
     sendCryptoToDeposit,
   };
 }

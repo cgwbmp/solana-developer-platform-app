@@ -158,6 +158,7 @@ describe("Payments routes — list transfers", () => {
             lamports: 2_000_000,
           }),
         ],
+        innerInstructions: [],
         preTokenBalances: [],
         postTokenBalances: [],
       })
@@ -301,6 +302,48 @@ describe("Payments routes — list transfers", () => {
         expect((await asTransfersOnly("/v1/payments/transfers/xfr_scope_onramp")).status).toBe(404);
         expect((await asTransfersOnly("/v1/payments/transfers/xfr_scope_batch")).status).toBe(404);
         expect((await asTransfersOnly("/v1/payments/transfers/xfr_scope_plain")).status).toBe(200);
+      });
+    });
+
+    // A channel without Ramps discloses no ramp rows, whatever the caller holds (APE SOLA9-698).
+    describe("on a release channel without Ramps", () => {
+      const asStable = (path: string) =>
+        app.request(
+          path,
+          { method: "GET", headers: { Authorization: `Bearer ${TEST_API_KEY.raw}` } },
+          { ...env, SDP_RELEASE_CHANNEL: "stable" }
+        );
+      const transferIdsSchema = z.object({ data: z.array(z.object({ id: z.string() })) });
+
+      beforeEach(async () => {
+        await seedTransfer({ id: "xfr_stable_plain", status: "confirmed" });
+        await seedTransfer({ id: "xfr_stable_onramp", status: "confirmed", type: "onramp" });
+        await seedTransfer({ id: "xfr_stable_offramp", status: "confirmed", type: "offramp" });
+      });
+
+      it("leaves ramp rows out of the default list", async () => {
+        const res = await asStable("/v1/payments/transfers");
+
+        expect(res.status).toBe(200);
+        expect(
+          transferIdsSchema.parse(await res.json()).data.map((transfer) => transfer.id)
+        ).toEqual(["xfr_stable_plain"]);
+      });
+
+      it.each(["/v1/payments/transfers?category=ramp", "/v1/payments/transfers?type=onramp"])(
+        "refuses %s as outside the channel",
+        async (path) => {
+          const res = await asStable(path);
+
+          expect(res.status).toBe(403);
+          expect(await res.json()).toMatchObject({ error: { code: "FORBIDDEN" } });
+        }
+      );
+
+      it("does not disclose a ramp row by id", async () => {
+        expect((await asStable("/v1/payments/transfers/xfr_stable_onramp")).status).toBe(404);
+        expect((await asStable("/v1/payments/transfers/xfr_stable_offramp")).status).toBe(404);
+        expect((await asStable("/v1/payments/transfers/xfr_stable_plain")).status).toBe(200);
       });
     });
 
@@ -463,6 +506,7 @@ describe("Payments routes — list transfers", () => {
               tokenAmount: { amount: "10000000", decimals: 6, uiAmountString: "10" },
             }),
           ],
+          innerInstructions: [],
           preTokenBalances: [
             usdcBalance(1, TEST_SOLANA_ADDRESSES.wallet2, "10000000"),
             usdcBalance(2, TEST_SOLANA_ADDRESSES.wallet1, "0"),
@@ -529,6 +573,7 @@ describe("Payments routes — list transfers", () => {
               tokenAmount: { amount: "25000000", decimals: 6, uiAmountString: "25" },
             }),
           ],
+          innerInstructions: [],
           preTokenBalances: [
             customBalance(1, TEST_SOLANA_ADDRESSES.wallet2, "25000000"),
             customBalance(2, TEST_SOLANA_ADDRESSES.wallet1, "0"),
@@ -597,6 +642,7 @@ describe("Payments routes — list transfers", () => {
               amount: "500000000",
             }),
           ],
+          innerInstructions: [],
           preTokenBalances: [],
           postTokenBalances: [
             parsedTokenBalance({
@@ -714,6 +760,45 @@ describe("Payments routes — list transfers", () => {
       expect(body.data).toHaveLength(3);
       expect(body.meta.total).toBe(3);
       expect(rpc.calls).toEqual([]);
+    });
+
+    it("withholds a batch chunk's signed transaction bytes, keeping its signature", async () => {
+      await seedTransfer({ id: "xfr_bytes_plain", status: "confirmed", signature: "sig_plain" });
+      await seedTransfer({
+        id: "xfr_bytes_batch",
+        status: "confirmed",
+        type: "transfer_batch",
+        signature: "sig_batch",
+      });
+      await getDb(env)
+        .prepare("UPDATE payment_transfers SET serialized_tx = ? WHERE id IN (?, ?)")
+        .bind("AQID", "xfr_bytes_plain", "xfr_bytes_batch")
+        .run();
+
+      const res = await app.request(
+        "/v1/payments/transfers",
+        { method: "GET", headers: { Authorization: `Bearer ${TEST_API_KEY.raw}` } },
+        env
+      );
+
+      expect(res.status).toBe(200);
+      const body = z
+        .object({
+          data: z.array(
+            z.object({
+              id: z.string(),
+              signature: z.string().nullable(),
+              serializedTx: z.string().nullable(),
+            })
+          ),
+        })
+        .parse(await res.json());
+      const byId = new Map(body.data.map((transfer) => [transfer.id, transfer]));
+      expect(byId.get("xfr_bytes_batch")).toMatchObject({
+        signature: "sig_batch",
+        serializedTx: null,
+      });
+      expect(byId.get("xfr_bytes_plain")).toMatchObject({ serializedTx: "AQID" });
     });
 
     it("scopes database-backed history to the exact wallet row", async () => {

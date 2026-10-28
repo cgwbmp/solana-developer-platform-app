@@ -4,11 +4,7 @@ import {
   projectProviderAvailabilitySchema,
 } from "@sdp/types/provider-access";
 import { z } from "zod";
-import {
-  addMemberSchema as addMemberSchemaBase,
-  updateMemberSchema as updateMemberSchemaBase,
-  updateProjectSchema as updateProjectSchemaBase,
-} from "@/routes/projects/schemas";
+import { updateProjectSchema as updateProjectSchemaBase } from "@/routes/projects/schemas";
 import { apiKeyListItemSchema } from "./api-keys";
 import {
   isoDateTimeSchema,
@@ -20,7 +16,7 @@ import {
 } from "./base";
 import { userSchema } from "./organizations";
 
-export const projectSettingsSchema = z
+const projectSettingsSchema = z
   .object({
     webhookUrl: z.string().url().optional().openapi({
       description: "Webhook URL for event notifications.",
@@ -37,7 +33,7 @@ export const projectSettingsSchema = z
   .strict()
   .openapi({ description: "Project settings." });
 
-export const projectSchema = z
+const projectSchema = z
   .object({
     id: projectIdParamSchema,
     organizationId: orgIdParamSchema,
@@ -72,29 +68,11 @@ export const projectSchema = z
   })
   .openapi({ description: "Project record." });
 
-export const projectMemberSchema = z
+const projectMemberWithUserSchema = z
   .object({
     id: projectMemberIdSchema,
     projectId: projectIdParamSchema,
     userId: userIdSchema,
-    role: z
-      .enum(["admin", "developer", "viewer"])
-      .openapi({ description: "Project member role.", example: "developer" }),
-    createdAt: isoDateTimeSchema.openapi({
-      description: "Membership creation timestamp.",
-      example: "2025-01-01T00:00:00.000Z",
-    }),
-  })
-  .openapi({ description: "Project member record." });
-
-export const projectMemberWithUserSchema = z
-  .object({
-    id: projectMemberIdSchema,
-    projectId: projectIdParamSchema,
-    userId: userIdSchema,
-    role: z
-      .enum(["admin", "developer", "viewer"])
-      .openapi({ description: "Project member role.", example: "developer" }),
     createdAt: isoDateTimeSchema.openapi({
       description: "Membership creation timestamp.",
       example: "2025-01-01T00:00:00.000Z",
@@ -114,12 +92,6 @@ export const listProjectsResponseSchema = z
     projects: z.array(projectSchema).openapi({ description: "Projects." }),
   })
   .openapi({ description: "List of projects." });
-
-export const projectMemberResponseSchema = z
-  .object({
-    member: projectMemberWithUserSchema.openapi({ description: "Project member details." }),
-  })
-  .openapi({ description: "Project member response payload." });
 
 export const listProjectMembersResponseSchema = z
   .object({
@@ -210,25 +182,3 @@ export const updateProjectRequestSchema = updateProjectSchemaBase
     }),
   })
   .openapi({ description: "Update project request body." });
-
-export const addProjectMemberRequestSchema = addMemberSchemaBase
-  .extend({
-    userId: withOpenApi(addMemberSchemaBase.shape.userId, {
-      description: "User identifier to add to the project.",
-      example: "usr_example",
-    }),
-    role: withOpenApi(addMemberSchemaBase.shape.role, {
-      description: "Role for the project member.",
-      example: "developer",
-    }),
-  })
-  .openapi({ description: "Add project member request body." });
-
-export const updateProjectMemberRequestSchema = updateMemberSchemaBase
-  .extend({
-    role: withOpenApi(updateMemberSchemaBase.shape.role, {
-      description: "Updated project member role.",
-      example: "admin",
-    }),
-  })
-  .openapi({ description: "Update project member request body." });
