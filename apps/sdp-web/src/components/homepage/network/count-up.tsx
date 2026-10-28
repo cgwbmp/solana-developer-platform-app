@@ -19,6 +19,29 @@ export function countAt(to: number, k: number): number {
   return Math.round(to * easeOutCubic(k));
 }
 
+/** The final figure (before hydration, under reduced motion), the running count, or zero until its block arrives. */
+type Display = "final" | "counting" | "waiting";
+
+function displayOf(hydrated: boolean, reducedMotion: boolean | null, arrived: boolean): Display {
+  if (!hydrated || reducedMotion) return "final";
+  return arrived ? "counting" : "waiting";
+}
+
+function displayedValue(display: Display, to: number, progress: number): number {
+  switch (display) {
+    case "final":
+      return to;
+    case "counting":
+      return countAt(to, progress);
+    case "waiting":
+      return 0;
+    default: {
+      const exhaustive: never = display;
+      throw new Error(`Unhandled count-up display: ${exhaustive}`);
+    }
+  }
+}
+
 type CountUpProps = {
   to: number;
   /** The catalog's figure, with `{count}` where the number goes (e.g. "{count}+"). */
@@ -48,7 +71,7 @@ export function CountUp({ to, message }: CountUpProps) {
   /** How far through the count the animation has run (0..1+); only the animation writes it. */
   const [progress, setProgress] = useState(0);
   const arrived = riseArrived ?? inView;
-  const value = !hydrated || reducedMotion ? to : arrived ? countAt(to, progress) : 0;
+  const value = displayedValue(displayOf(hydrated, reducedMotion, arrived), to, progress);
 
   useEffect(() => {
     if (reducedMotion || !arrived) return;
