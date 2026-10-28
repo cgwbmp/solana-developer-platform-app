@@ -125,7 +125,7 @@ describe("HomepageNav", () => {
       "#network",
       "/sign-up",
     ]);
-    expect(hrefs("homepage-nav-builders").slice(0, 3)).toEqual(["#builders", "#blog", "#stack"]);
+    expect(hrefs("homepage-nav-builders").slice(0, 2)).toEqual(["#builders", "#stack"]);
     const docs = hrefs("homepage-nav-docs");
     expect(docs.slice(0, 3)).toEqual([openLinks.docs, openLinks.openapi, openLinks.llms]);
     expect(docs).toContain("/sign-in");
@@ -133,7 +133,10 @@ describe("HomepageNav", () => {
 
   it("opens the builders' films in a new tab and says so", async () => {
     const { container } = render(await HomepageNav({ links: openLinks }), { wrapper: EnglishI18n });
-    const films = Array.from(container.querySelectorAll("#homepage-nav-builders a")).slice(3);
+    // past the panel's features, which link into the page
+    const films = Array.from(container.querySelectorAll("#homepage-nav-builders a")).filter(
+      (a) => !a.getAttribute("href")?.startsWith("#")
+    );
 
     const series = films.at(-1);
     expect(series?.textContent).toBe(t("Homepage.nav.builders.series"));

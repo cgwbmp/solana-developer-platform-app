@@ -48,6 +48,14 @@
     inset 0 0 13px #8d54d299,
     inset 0 0 34px #8d54d266,
     inset 0 0 46px #8d54d233;
+  opacity: 0;
+  transition: opacity 600ms var(--e);
+}
+
+/* the bubble comes up as its own letters have set as ink (form-headline.tsx's --run-end) */
+[data-state="solid"] .selN::before {
+  opacity: 1;
+  transition-delay: calc(var(--run-end) * var(--letter-stagger) * 1ms + 260ms);
 }
 
 /* it beats with each settlement on the rails */
@@ -243,5 +251,10 @@
 @media (prefers-reduced-motion: reduce) {
   .beat::before {
     animation: none;
+  }
+
+  .selN::before {
+    opacity: 1;
+    transition: none;
   }
 }

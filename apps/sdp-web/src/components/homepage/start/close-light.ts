@@ -2,8 +2,9 @@ import type { LiveScene } from "@/lib/use-scene-active";
 
 /*
  * The close's Solana mark as light: three bars drawn as the brand's soft violet light in WebGL,
- * where the glass mark stood, from the middle of the section off its right edge (on a phone, over
- * the headline). They gather the first time the section is reached and breathe; a light follows
+ * where the glass mark stood, past the middle of the section (on a phone, over the headline). The
+ * bars keep the mark's own proportions, never stretched; on a wide screen the frame crops the mark
+ * at the right. Violet only. They gather the first time the section is reached and breathe; a light follows
  * the pointer over the section and the footer, and wanders a small figure without one. The light
  * parts behind the headline, so the words stand on clean ground. Reduced motion draws one finished
  * frame. Plain WebGL 1, one full-screen triangle and one fragment shader.
@@ -13,7 +14,7 @@ const VERTEX = "attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}";
 
 const FRAGMENT = `precision highp float;
 uniform vec2 uRes;uniform vec2 uSize;uniform float uT;uniform vec2 uPtr;
-uniform vec3 uAsm;uniform vec4 uGeo;uniform float uS;uniform vec4 uClr;uniform float uClrK;
+uniform vec3 uAsm;uniform vec4 uGeo;uniform float uS;uniform vec4 uClr;uniform float uClrK;uniform float uFd;uniform float uGain;
 float box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return length(max(q,0.))+min(max(q.x,q.y),0.)-r;}
 float hash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
 float bar(vec2 p,float i,float a,out float rim){
@@ -24,7 +25,7 @@ float bar(vec2 p,float i,float a,out float rim){
   float x0=uGeo.x+dx;
   float u=p.x-(x0+sg*uS*(cy-p.y)/H);
   float k=H/sqrt(H*H+uS*uS);
-  float L=W*3.;
+  float L=H*3.62;
   vec2 q=vec2(u*k-L*k*.5,p.y-cy);
   float d=box(q,vec2(L*k*.5,H*.5),H*.2);
   float b=H*.16*(1.+2.6*(1.-a));
@@ -32,7 +33,7 @@ float bar(vec2 p,float i,float a,out float rim){
   float haze=exp(-max(d,0.)/(b*2.4))*.38;
   rim=exp(-abs(d)/1.4)*(1.-smoothstep(0.,W*.5,u));
   float shade=mix(1.,.62,clamp(q.y/H+.5,0.,1.));
-  float fade=mix(.22,1.,exp(-max(u,0.)/(W*.38)));
+  float fade=mix(.22,1.,exp(-max(u,0.)/uFd));
   float br=.84+.16*sin(uT*.8+i*2.09);
   return (body*.8*shade+haze)*fade*br*a;
 }
@@ -50,15 +51,25 @@ void main(){
   float ck=uClrK*cl*(1.-.45*lit);I*=1.-ck;
   float vf=smoothstep(0.,min(S.y*.06,40.),p.y)*(1.-smoothstep(S.y*.8,S.y,p.y));
   I*=vf;rim*=vf*(1.-ck);
-  float g=exp(-length((p-vec2(S.x*.96,S.y*.02))/vec2(S.x*.34,S.y*.5)))*vf;
   vec3 bg=vec3(.031,.031,.039);
-  vec3 col=bg+vec3(.52,.22,1.)*I*.42+vec3(.62,.45,1.)*rim*.32;
-  col+=vec3(.10,.98,.61)*g*.05;
+  vec3 col=bg+(vec3(.52,.22,1.)*I*.42+vec3(.62,.45,1.)*rim*.32)*uGain;
   col+=(hash(gl_FragCoord.xy+fract(uT))-.5)/255.*1.6;
   gl_FragColor=vec4(col,1.);
 }`;
 
-const UNIFORMS = ["uRes", "uSize", "uT", "uPtr", "uAsm", "uGeo", "uS", "uClr", "uClrK"] as const;
+const UNIFORMS = [
+  "uRes",
+  "uSize",
+  "uT",
+  "uPtr",
+  "uAsm",
+  "uGeo",
+  "uS",
+  "uClr",
+  "uClrK",
+  "uFd",
+  "uGain",
+] as const;
 
 /** Where the mark stands over the headline; start.module.css makes room for it at the same width. */
 const NARROW_QUERY = "(max-width: 760px)";
@@ -158,24 +169,35 @@ export function createCloseLight({
   let slant = 0;
   let clearing = [0, 0, 1, 1];
   let clearingStrength = 0.5;
+  /* how far along a bar its light fades, and how bright it is */
+  let fadeLength = 500;
+  let gain = 1;
+  let narrow = false;
 
   /* the bars set close, as the brand draws them: the gap is half a bar. On a wide screen the mark
      starts past the middle, beside the headline; on a phone it stands over the headline */
   const layout = () => {
     width = host.clientWidth;
     height = host.clientHeight;
-    const narrow = window.matchMedia?.(NARROW_QUERY).matches ?? false;
+    narrow = window.matchMedia?.(NARROW_QUERY).matches ?? false;
     /* the host covers its section, so both share one origin */
     const words = layoutBox(copy, host.offsetParent);
     if (narrow) {
+      /* larger and brighter than the wide light, fading along its own length rather than the
+         screen's, so the bars read as the mark and not as smudges; a clear gap above the headline */
       const above = words.top;
-      const bar = Math.max(28, Math.min(48, (above - 64) / 4.2));
-      geometry = [width * 0.12, above / 2 + 8, bar, bar * 0.5];
+      const bar = Math.max(30, Math.min(52, (above - 104) / 4.4));
+      geometry = [width * 0.12, 20 + (above - 64) / 2, bar, bar * 0.5];
       slant = bar * 0.78;
+      fadeLength = bar * 9;
+      gain = 1.5;
     } else {
-      const bar = Math.max(64, Math.min(170, height * 0.17, width * 0.12));
-      geometry = [width * 0.55, height * 0.42, bar, bar * 0.5];
+      /* a little further right than the headline's column ends, so the two never clash */
+      const bar = Math.max(64, Math.min(190, height * 0.2, width * 0.126));
+      geometry = [width * 0.6, height * 0.42, bar, bar * 0.5];
       slant = bar * 0.78;
+      fadeLength = width * 0.38;
+      gain = 1;
     }
     clearing = [
       words.left + words.width / 2,
@@ -210,10 +232,16 @@ export function createCloseLight({
     const y = pointer.y - box.top;
     return y > -40 && y < box.height + 240 ? { x, y } : null;
   };
-  const wander = (t: number): Point => ({
-    x: width * (0.7 + 0.14 * Math.sin(t * 0.21)),
-    y: height * (0.42 + 0.16 * Math.sin(t * 0.17 + 1.0)),
-  });
+  const wander = (t: number): Point =>
+    narrow
+      ? {
+          x: width * (0.45 + 0.2 * Math.sin(t * 0.21)),
+          y: geometry[1] + geometry[2] * Math.sin(t * 0.17 + 1.0),
+        }
+      : {
+          x: width * (0.7 + 0.14 * Math.sin(t * 0.21)),
+          y: height * (0.42 + 0.16 * Math.sin(t * 0.17 + 1.0)),
+        };
 
   let start = performance.now();
   let last = start;
@@ -243,6 +271,8 @@ export function createCloseLight({
     context.uniform1f(u.uS, slant);
     context.uniform4f(u.uClr, clearing[0], clearing[1], clearing[2], clearing[3]);
     context.uniform1f(u.uClrK, clearingStrength);
+    context.uniform1f(u.uFd, fadeLength);
+    context.uniform1f(u.uGain, gain);
     context.drawArrays(context.TRIANGLES, 0, 3);
   };
 
@@ -280,6 +310,8 @@ export function createCloseLight({
     onLost();
   };
 
+  /* the canvas in place first: the close makes room for it on a phone (start.module.css), and
+     the light measures the room it was given */
   host.appendChild(canvas);
   layout();
   draw(reducedMotion ? STILL_AT : 0, reducedMotion);

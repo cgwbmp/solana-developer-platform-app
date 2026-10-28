@@ -67,7 +67,6 @@ describe("HomepageFooter", () => {
       GitHub: SDP_GITHUB_REPO_URL,
       Partners: "#stack",
       Builders: "#builders",
-      Tutorials: "#blog",
     });
   });
 

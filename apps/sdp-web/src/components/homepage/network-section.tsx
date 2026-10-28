@@ -38,7 +38,7 @@ export async function NetworkSection() {
         <Rise index={1}>
           <SpeedRace />
         </Rise>
-        <Rise index={2} className={styles.statsBlock}>
+        <Rise index={2} fade className={styles.statsBlock}>
           <ul className={styles.stats}>
             {STATS.map((stat) => {
               return (

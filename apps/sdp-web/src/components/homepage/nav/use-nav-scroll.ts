@@ -75,7 +75,6 @@ const SECTION_GROUP = {
   privacy: platform,
   interfaces: docs,
   builders,
-  blog: builders,
   start: docs,
 } as const satisfies Record<string, NavGroupId | null>;
 

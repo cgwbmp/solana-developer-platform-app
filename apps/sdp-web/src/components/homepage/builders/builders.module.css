@@ -1,16 +1,17 @@
 /*
  * Meet the builders, still. A dark panel (homepage.module.css `.panel`) on the night ground,
- * rounded at the top only: the walkthroughs and the close run on from it as one dark block, its
+ * rounded at the top only: the close runs on from it as one dark block, its
  * violet only at the top right. The faces in grey, in colour under the pointer, beside the words.
  */
 .section {
   --panel-light: radial-gradient(40% 50% at 100% 0%, #9945ff14 0%, #9945ff00 70%);
   --pnl: var(--night);
   --panel-radius: var(--pr) var(--pr) 0 0;
-  /* the walkthroughs tuck 1px under the panel: at a fractional height its clipped bottom edge
+  /* the night after it tucks 1px under the panel: at a fractional height its clipped bottom edge
      would otherwise antialias over the paper and draw a light hairline at the seam */
   --panel-after: -1px;
-  padding: calc(var(--pad) * 1.1) 0 0;
+  /* the faces keep a section's air under them */
+  padding: calc(var(--pad) * 1.1) 0 var(--pad);
 }
 
 .layout {

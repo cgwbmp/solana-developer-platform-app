@@ -367,9 +367,10 @@
 }
 
 @media (max-width: 760px) {
-  /* close-light.ts stands the mark over the headline at the same width */
-  .section:has(> .light[data-mode="live"]) {
-    padding-top: 220px;
+  /* close-light.ts stands the mark over the headline at the same width; keyed on its canvas,
+     which is there before the light measures the headline */
+  .section:has(> .light > .lightCanvas) {
+    padding-top: 270px;
   }
 
   .mark {

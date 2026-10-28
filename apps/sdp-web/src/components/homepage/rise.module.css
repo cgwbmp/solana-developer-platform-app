@@ -16,6 +16,13 @@
   clip-path: inset(-40% -40% -40% -40%);
 }
 
+/* a block that only fades in (the network's figures, so nothing wipes over them) */
+.fade,
+.fade[data-arrived="true"] {
+  transform: none;
+  clip-path: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rise {
     opacity: 1;

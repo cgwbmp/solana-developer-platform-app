@@ -17,20 +17,21 @@ import { PaymentsSection } from "@/components/homepage/payments-section";
 import { PrivacySection } from "@/components/homepage/privacy-section";
 import { StackSection } from "@/components/homepage/stack-section";
 import { StartSection } from "@/components/homepage/start-section";
-import { WalkthroughsSection } from "@/components/homepage/walkthroughs-section";
 import { homepageOpenSignup } from "@/flags";
 import { getTranslations } from "@/i18n/server";
 
 /*
  * Without script the page must still read: the blocks that rise in (`data-rise`), the code lines
- * and status that roll in (`data-roll-in`) and the letters that form in (`data-form-letter`) wait
- * on client effects, so a noscript style sets them in their final state. Stable data attributes,
- * since the CSS modules' class names are hashed. With script it never applies.
+ * and status that roll in (`data-roll-in`), the letters that form in (`data-form-letter`) and the
+ * bubbles that wait on their phrase (`data-form-phrase`) wait on client effects, so a noscript
+ * style sets them in their final state (the hero's run on a CSS clock and need none). Stable data
+ * attributes, since the CSS modules' class names are hashed. With script it never applies.
  */
 const NOSCRIPT_CSS = [
   "[data-rise]{opacity:1!important;transform:none!important;clip-path:none!important}",
   "[data-roll-in]{opacity:1!important;transform:none!important}",
   "[data-form-letter]{color:inherit!important;-webkit-text-stroke:0!important;filter:none!important;opacity:1!important;transform:none!important}",
+  "[data-state=hidden] [data-form-phrase]::before{opacity:1!important}",
 ].join("");
 
 export default async function Home() {
@@ -70,7 +71,6 @@ export default async function Home() {
           <PaymentsApiSection />
         </PaymentKindProvider>
         <BuildersSection />
-        <WalkthroughsSection />
         <StartSection links={links} />
       </main>
       <HomepageFooter links={links} />

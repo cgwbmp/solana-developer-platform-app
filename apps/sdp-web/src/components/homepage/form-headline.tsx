@@ -13,7 +13,8 @@ export type HeadlinePart = string | { text: string; className?: string } | { lin
 type FormState = "hidden" | "outline" | "mat" | "solid" | "paint";
 
 type Word = { key: string; letters: { key: string; index: number; letter: string }[] };
-type Run = { key: string; className?: string; items: (Word | " ")[] };
+/** `last`: the index of the run's last letter, which sets the moment its phrase is set. */
+type Run = { key: string; className?: string; last: number; items: (Word | " ")[] };
 type Piece = Run | { key: string; lineBreak: true };
 
 // Custom property names, kept out of the JSX so they read as style, not copy.
@@ -21,6 +22,8 @@ const LETTER_INDEX = "--letter-index";
 const LETTER_STAGGER = "--letter-stagger";
 const FORM_START = "--form-start";
 const FORM_SPREAD = "--form-spread";
+const LETTER_LAST = "--letter-last";
+const RUN_END = "--run-end";
 
 function partText(part: HeadlinePart): string {
   if (typeof part === "string") return part;
@@ -53,7 +56,12 @@ export function splitHeadline(parts: readonly HeadlinePart[]): {
       });
       items.push({ key: `w${letters[0]?.index}`, letters });
     }
-    return { key, className: typeof part === "string" ? undefined : part.className, items };
+    return {
+      key,
+      className: typeof part === "string" ? undefined : part.className,
+      last: index - 1,
+      items,
+    };
   });
   return { pieces, letterCount: index };
 }
@@ -79,7 +87,10 @@ type FormHeadlineProps = {
 /**
  * A headline whose letters form in (outline → blur → ink). Screen readers get the sentence once,
  * as plain text; the animated letters are hidden from them. Under reduced motion the CSS shows
- * the text at once; without script, the page's noscript style does (`data-form-letter`).
+ * the text at once; without script, the page's noscript style does (`data-form-letter`,
+ * `data-form-phrase`). A highlighted phrase carries its last letter's index (--run-end) and the
+ * headline its own last letter's (--letter-last), so a phrase's CSS can bring its bubble up as
+ * its letters set as ink, not before the words are there and not seconds after.
  */
 export function FormHeadline({
   as: Tag = "h2",
@@ -130,6 +141,7 @@ export function FormHeadline({
         // module CSS reads.
         {
           [LETTER_STAGGER]: stagger,
+          [LETTER_LAST]: letterCount - 1,
           [FORM_START]: paint ? `${formAt}ms` : undefined,
           [FORM_SPREAD]: paint ? spread : undefined,
         } as CSSProperties
@@ -140,7 +152,16 @@ export function FormHeadline({
           "lineBreak" in piece ? (
             <br key={piece.key} />
           ) : (
-            <span key={piece.key} className={piece.className}>
+            <span
+              key={piece.key}
+              className={piece.className}
+              data-form-phrase={piece.className ? "" : undefined}
+              style={
+                // SAFETY: CSSProperties has no entry for custom properties; --run-end is read by
+                // the phrase's own CSS.
+                piece.className ? ({ [RUN_END]: piece.last } as CSSProperties) : undefined
+              }
+            >
               {piece.items.map((item) =>
                 item === " " ? (
                   " "

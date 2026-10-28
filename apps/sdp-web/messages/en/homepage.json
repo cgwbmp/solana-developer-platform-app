@@ -31,10 +31,6 @@
           "title": "Meet the builders",
           "body": "Sixteen conversations, from the Solana channel."
         },
-        "walkthroughs": {
-          "title": "The sandbox walkthroughs",
-          "body": "Recorded from the console, under thirty seconds each."
-        },
         "partners": { "title": "Partners", "body": "Custody, compliance, ramps, nodes and more." },
         "series": "The whole series",
         "seriesLabel": "The whole series on YouTube (opens in a new tab)"
@@ -49,8 +45,7 @@
         "dashboard": "Dashboard"
       },
       "mobile": {
-        "builders": "Builders",
-        "walkthroughs": "Walkthroughs"
+        "builders": "Builders"
       }
     },
     "hero": {
@@ -287,25 +282,6 @@
       "series": "Watch the series",
       "seriesLabel": "Watch the series on YouTube (opens in a new tab)"
     },
-    "walkthroughs": {
-      "headline": "The sandbox walkthroughs.",
-      "chapters": "Chapters",
-      "watch": "Watch",
-      "watchLabel": "Watch “{title}”, {seconds} seconds",
-      "captions": "English",
-      "films": {
-        "dvp": {
-          "title": "Delivery versus payment",
-          "note": "Markets · both legs move, or neither does",
-          "videoLabel": "Markets: delivery versus payment"
-        },
-        "v1": {
-          "title": "What changed in v1.0",
-          "note": "One source for every figure, Command K, provider logos",
-          "videoLabel": "What changed in v1.0"
-        }
-      }
-    },
     "start": {
       "titleBefore": "Build the next ",
       "titleHighlight": "wave of finance",
@@ -332,8 +308,7 @@
         "openApi": "OpenAPI",
         "github": "GitHub",
         "partners": "Partners",
-        "builders": "Builders",
-        "tutorials": "Tutorials"
+        "builders": "Builders"
       },
       "providedBy": "Provided by the {organization}"
     }

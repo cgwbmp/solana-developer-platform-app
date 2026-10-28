@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Rise } from "@/components/homepage/rise";
 import { EnglishI18n } from "@/test/i18n";
 import { setReducedMotion, stubMatchMedia } from "@/test/media-queries";
-import { stubIntersectionObserver } from "@/test/visibility";
+import { intersect, stubIntersectionObserver } from "@/test/visibility";
 import { CountUp, countAt } from "./count-up";
 import {
   createRaceState,
@@ -44,33 +45,36 @@ describe("countAt", () => {
 });
 
 describe("CountUp", () => {
-  function placeAt(top: number) {
-    // SAFETY: jsdom has no layout; CountUp reads only these box fields from the rect.
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-      top,
-      bottom: top + 40,
-    } as DOMRect);
-  }
+  it("stands at zero until its block comes in, then counts up to the figure, read once", () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "performance"],
+    });
+    render(
+      <Rise index={2}>
+        <CountUp to={30} message="Homepage.network.stats.partners.value" />
+      </Rise>,
+      { wrapper: EnglishI18n }
+    );
+    // the moving digits at zero, the final figure for assistive tech
+    expect(screen.getByText("0+").getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByText("30+").className).toBe("sr-only");
 
-  it("keeps a figure already on screen at its final value, in the catalog's words, read once", () => {
-    placeAt(100);
-    render(<CountUp to={30} message="Homepage.network.stats.partners.value" />, {
-      wrapper: EnglishI18n,
+    intersect(true);
+    act(() => {
+      vi.advanceTimersByTime(2000);
     });
     const shown = screen.getAllByText("30+");
     expect(shown).toHaveLength(2);
     expect(shown[0].getAttribute("aria-hidden")).toBe("true");
-    expect(shown[1].className).toBe("sr-only");
+    vi.useRealTimers();
   });
 
-  it("keeps the final figure on a figure that starts off screen until it counts", () => {
-    placeAt(5000);
+  it("shows the final figure at once under reduced motion", () => {
+    setReducedMotion(true);
     render(<CountUp to={200} message="Homepage.network.stats.currencies.value" />, {
       wrapper: EnglishI18n,
     });
-    const shown = screen.getAllByText("200+");
-    expect(shown).toHaveLength(2);
-    expect(shown.some((element) => element.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(screen.getAllByText("200+")).toHaveLength(2);
     expect(screen.queryByText("0+")).toBeNull();
   });
 });

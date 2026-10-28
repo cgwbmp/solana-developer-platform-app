@@ -2,12 +2,15 @@
 
 import { useInView, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { useRiseArrived, useRiseDelay } from "@/components/homepage/rise";
 import type { MessageKey } from "@/i18n/messages";
 import { useLocale, useTranslations } from "@/i18n/provider";
 import { easeOutCubic } from "@/lib/easing";
 import { formatNumber } from "@/lib/number-format";
 
-const DURATION_MS = 1100;
+const DURATION_MS = 1000;
+/** The count starts this long after its block starts to fade in. */
+const LAG_MS = 80;
 
 /** The figure shown `k` (0..1) of the way through the count: ease-out cubic, whole numbers. */
 export function countAt(to: number, k: number): number {
@@ -21,44 +24,47 @@ type CountUpProps = {
 };
 
 /**
- * A figure that counts up once, from zero, the first time it comes on screen. It counts only when
- * it was off screen as the page started, so a figure already in view never jumps back to zero;
- * until it counts (and under reduced motion, and before hydration) the final figure is there. Assistive
- * tech reads the final figure once from a static copy; the moving digits are hidden from it.
+ * A figure that counts up once, from zero, as its `Rise` block comes in (outside any block, the
+ * first time it comes on screen). Once the page runs it stands at zero, hidden with its block,
+ * until then, so it never shows the final figure first and restarts from zero; before hydration
+ * and under reduced motion the final figure is there. Assistive tech reads the final figure once
+ * from a static copy; the moving digits are hidden from it.
  */
 export function CountUp({ to, message }: CountUpProps) {
   const t = useTranslations();
   const locale = useLocale();
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.4 });
+  const riseArrived = useRiseArrived();
+  const riseDelay = useRiseDelay();
   const reducedMotion = useReducedMotion();
-  const [armed, setArmed] = useState(false);
   const [value, setValue] = useState(to);
-
-  // off screen at the start: count when it arrives. The final figure stays until then, so a page
-  // scrolled past quickly, printed or crawled never shows a zero.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || reducedMotion) return;
-    const box = el.getBoundingClientRect();
-    if (box.bottom > 0 && box.top < window.innerHeight) return;
-    setArmed(true);
-  }, [reducedMotion]);
+  const arrived = riseArrived ?? inView;
 
   useEffect(() => {
-    if (!armed || !inView) return;
     if (reducedMotion) {
       setValue(to);
       return;
     }
-    const start = performance.now();
-    let frame = requestAnimationFrame(function tick(now) {
-      const k = (now - start) / DURATION_MS;
-      setValue(countAt(to, k));
-      if (k < 1) frame = requestAnimationFrame(tick);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [armed, inView, reducedMotion, to]);
+    if (!arrived) {
+      setValue(0);
+      return;
+    }
+    let frame = 0;
+    // with its block's own fade
+    const timer = window.setTimeout(() => {
+      const start = performance.now();
+      frame = requestAnimationFrame(function tick(now) {
+        const k = (now - start) / DURATION_MS;
+        setValue(countAt(to, k));
+        if (k < 1) frame = requestAnimationFrame(tick);
+      });
+    }, riseDelay + LAG_MS);
+    return () => {
+      window.clearTimeout(timer);
+      cancelAnimationFrame(frame);
+    };
+  }, [arrived, reducedMotion, riseDelay, to]);
 
   return (
     <>

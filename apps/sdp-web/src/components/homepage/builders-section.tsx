@@ -21,7 +21,7 @@ function YouTubeMark() {
 
 /**
  * Meet the builders, still: the sixteen films as a grid of faces beside the words. A dark panel
- * rounded at the top only, so the walkthroughs and the close run on from it as one dark block.
+ * rounded at the top only, so the close runs on from it as one dark block.
  */
 export async function BuildersSection() {
   const t = await getTranslations();

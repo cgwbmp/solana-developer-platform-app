@@ -56,11 +56,6 @@ export async function HomepageNav({ links }: { links: HomepageLinks }) {
           href: "#builders",
         },
         {
-          label: t("Homepage.nav.builders.walkthroughs.title"),
-          body: t("Homepage.nav.builders.walkthroughs.body"),
-          href: "#blog",
-        },
-        {
           label: t("Homepage.nav.builders.partners.title"),
           body: t("Homepage.nav.builders.partners.body"),
           href: "#stack",
@@ -116,7 +111,6 @@ export async function HomepageNav({ links }: { links: HomepageLinks }) {
     { label: t("Homepage.nav.platform.privacy"), href: "#privacy" },
     { label: t("Homepage.nav.platform.partners"), href: "#stack" },
     { label: t("Homepage.nav.mobile.builders"), href: "#builders" },
-    { label: t("Homepage.nav.mobile.walkthroughs"), href: "#blog" },
     { label: t("Homepage.nav.platform.interfaces"), href: "#interfaces" },
     { label: t("Homepage.nav.docs.label"), href: links.docs },
   ];

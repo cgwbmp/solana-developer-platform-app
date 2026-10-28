@@ -1,8 +1,8 @@
 /*
  * The first screen: the statement beside the globe, the two logo blocks along its floor. The
- * page's arrival (on-tail 1500ms, on-sel1 1900ms, on-sel2 2900ms) runs on CSS animation delays
- * from first paint, so nothing waits on hydration and under reduced motion everything is simply
- * there.
+ * page's arrival (the lede, buttons and logos from 1500ms, each selection as its own words have
+ * set) runs on CSS animation delays from first paint, so nothing waits on hydration and under
+ * reduced motion everything is simply there.
  */
 .hero {
   position: relative;
@@ -40,8 +40,17 @@
 }
 
 /* the two selections: a dashed one on the phrase being pointed at, a glowing one on the phrase
-   chosen. Each box hugs its own words, so the two never touch */
+   chosen. Each box hugs its own words, so the two never touch, and comes up as its own letters
+   have set as ink, on the headline's clock (form-headline.module.css): the ink stage's start, then
+   its last letter's place in the line, then a beat. The chosen phrase closes the line, so the
+   pointed one rests as the headline's last letter sets */
+.title {
+  --ink-at: calc(var(--form-start) + 980ms + var(--form-spread) * 0.6ms + 260ms);
+  --chosen-at: calc(var(--ink-at) + var(--letter-last) * var(--letter-stagger) * 1ms);
+}
+
 .sel {
+  --sel-at: calc(var(--ink-at) + var(--run-end) * var(--letter-stagger) * 1ms);
   position: relative;
   display: inline-block;
   padding: 0 0.12em;
@@ -62,8 +71,8 @@
   border: 1.5px dashed #9945ff99;
   background: var(--paper);
   animation:
-    selectIn 420ms var(--e) 1900ms forwards,
-    selectRest 420ms var(--e) 2900ms forwards;
+    selectIn 420ms var(--e) var(--sel-at) forwards,
+    selectRest 420ms var(--e) var(--chosen-at) forwards;
 }
 
 .selB::before {
@@ -72,11 +81,11 @@
     inset 0 0 13px #8d54d266,
     inset 0 0 34px #8d54d266,
     inset 0 0 46px #8d54d233;
-  animation: selectIn 420ms var(--e) 2900ms forwards;
+  animation: selectIn 420ms var(--e) var(--sel-at) forwards;
 }
 
 .selB {
-  animation: chosen 520ms var(--e) 2900ms both;
+  animation: chosen 520ms var(--e) var(--sel-at) both;
 }
 
 @keyframes selectIn {

@@ -46,7 +46,6 @@ export async function HomepageFooter({ links }: { links: HomepageLinks }) {
       links: [
         { label: t("Homepage.footer.links.partners"), href: "#stack" },
         { label: t("Homepage.footer.links.builders"), href: "#builders" },
-        { label: t("Homepage.footer.links.tutorials"), href: "#blog" },
       ],
     },
   ];
