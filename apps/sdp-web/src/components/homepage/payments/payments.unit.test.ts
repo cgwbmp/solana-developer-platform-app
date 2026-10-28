@@ -34,9 +34,8 @@ describe("buildFigure", () => {
   it.each(PAYMENT_KINDS)("draws %s as a labelled, timed svg in the catalog's words", (kind) => {
     const label = catalog.Homepage.payments.kinds[kind].figure;
     const svg = buildFigure(kind, { fonts, label, copy });
-    expect(svg).not.toBeNull();
     const host = document.createElement("div");
-    host.innerHTML = svg ?? "";
+    host.innerHTML = svg;
     const root = host.querySelector("svg");
     expect(root?.getAttribute("role")).toBe("img");
     expect(root?.getAttribute("aria-label")).toBe(label);
@@ -47,10 +46,10 @@ describe("buildFigure", () => {
   });
 
   it("sets the figure words from the catalog", () => {
-    const svg = buildFigure("pay", { fonts, label: "Pay", copy }) ?? "";
+    const svg = buildFigure("pay", { fonts, label: "Pay", copy });
     expect(svg).toContain(words.opsWallet);
     expect(svg).toContain(words.received);
-    const batch = buildFigure("batch", { fonts, label: "Batch", copy }) ?? "";
+    const batch = buildFigure("batch", { fonts, label: "Batch", copy });
     expect(batch).toContain("3 of 3 paid");
   });
 });
@@ -67,7 +66,7 @@ describe("createFigurePlayer", () => {
 
   it("plays a cycle with .live, alternates the outcome and rests when eased", () => {
     const host = document.createElement("div");
-    host.innerHTML = buildFigure("pay", { fonts, label: "Pay", copy }) ?? "";
+    host.innerHTML = buildFigure("pay", { fonts, label: "Pay", copy });
     const svg = svgOf(host);
     const onEnd = vi.fn();
     const player = createFigurePlayer(svg, "en", onEnd);
@@ -88,7 +87,7 @@ describe("createFigurePlayer", () => {
 
   it("steps a counter on its beats and stops at once", () => {
     const host = document.createElement("div");
-    host.innerHTML = buildFigure("micro", { fonts, label: "Micro", copy }) ?? "";
+    host.innerHTML = buildFigure("micro", { fonts, label: "Micro", copy });
     const svg = svgOf(host);
     const balance = svg.querySelector('[data-n="4.2"]');
     const player = createFigurePlayer(svg, "en", () => {});
@@ -102,7 +101,7 @@ describe("createFigurePlayer", () => {
 
   it("stops a rolling counter where it is", () => {
     const host = document.createElement("div");
-    host.innerHTML = buildFigure("deposit", { fonts, label: "Deposit", copy }) ?? "";
+    host.innerHTML = buildFigure("deposit", { fonts, label: "Deposit", copy });
     const svg = svgOf(host);
     const balance = svg.querySelector('[data-n="1250"]');
     const player = createFigurePlayer(svg, "en", () => {});

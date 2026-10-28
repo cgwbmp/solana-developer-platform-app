@@ -38,7 +38,7 @@ export type BenchOptions = {
 
 export type BenchController = {
   /** Puts the drawn figures on the stage (markup per kind, in the kinds' order). */
-  load(figures: (string | null)[]): void;
+  load(figures: string[]): void;
   /** The bench has arrived on screen: the first kind takes the stage. */
   arrive(): void;
   select(index: number): void;
@@ -248,7 +248,7 @@ export function createBenchController(o: BenchOptions): BenchController {
         el.className = classes.fig;
         el.dataset.kind = kind;
         /* the drawings are this module's own generated markup, never user input */
-        el.innerHTML = figures[n] ?? "";
+        el.innerHTML = figures[n];
         deck.appendChild(el);
         return el;
       });

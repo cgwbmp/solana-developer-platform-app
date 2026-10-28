@@ -21,15 +21,10 @@ const SCENES = {
   deposit: depositScene,
 } satisfies Record<PaymentKind, unknown>;
 
-/** One kind's figure, or null if its drawing fails (the stage then stays empty for that kind). */
+/** One kind's figure; a drawing error escapes to the caller. */
 export function buildFigure(
   kind: PaymentKind,
   input: { fonts: FigFonts; label: string; copy: FigureCopy }
-): string | null {
-  try {
-    return SCENES[kind](input);
-  } catch (error) {
-    console.error("payments figure", kind, error);
-    return null;
-  }
+): string {
+  return SCENES[kind](input);
 }
