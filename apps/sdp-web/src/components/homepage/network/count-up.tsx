@@ -1,7 +1,7 @@
 "use client";
 
 import { useInView, useReducedMotion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRiseArrived, useRiseDelay } from "@/components/homepage/rise";
 import type { MessageKey } from "@/i18n/messages";
 import { useLocale, useTranslations } from "@/i18n/provider";
@@ -11,6 +11,8 @@ import { formatNumber } from "@/lib/number-format";
 const DURATION_MS = 1000;
 /** The count starts this long after its block starts to fade in. */
 const LAG_MS = 80;
+
+const subscribeToHydration = () => () => {};
 
 /** The figure shown `k` (0..1) of the way through the count: ease-out cubic, whole numbers. */
 export function countAt(to: number, k: number): number {
@@ -38,25 +40,25 @@ export function CountUp({ to, message }: CountUpProps) {
   const riseArrived = useRiseArrived();
   const riseDelay = useRiseDelay();
   const reducedMotion = useReducedMotion();
-  const [value, setValue] = useState(to);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false
+  );
+  /** How far through the count the animation has run (0..1+); only the animation writes it. */
+  const [progress, setProgress] = useState(0);
   const arrived = riseArrived ?? inView;
+  const value = !hydrated || reducedMotion ? to : arrived ? countAt(to, progress) : 0;
 
   useEffect(() => {
-    if (reducedMotion) {
-      setValue(to);
-      return;
-    }
-    if (!arrived) {
-      setValue(0);
-      return;
-    }
+    if (reducedMotion || !arrived) return;
     let frame = 0;
     // with its block's own fade
     const timer = window.setTimeout(() => {
       const start = performance.now();
       frame = requestAnimationFrame(function tick(now) {
         const k = (now - start) / DURATION_MS;
-        setValue(countAt(to, k));
+        setProgress(k);
         if (k < 1) frame = requestAnimationFrame(tick);
       });
     }, riseDelay + LAG_MS);
@@ -64,7 +66,7 @@ export function CountUp({ to, message }: CountUpProps) {
       window.clearTimeout(timer);
       cancelAnimationFrame(frame);
     };
-  }, [arrived, reducedMotion, riseDelay, to]);
+  }, [arrived, reducedMotion, riseDelay]);
 
   return (
     <>
