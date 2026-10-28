@@ -101,6 +101,24 @@ type FigOptions = {
 
 const C = Math.cos(Math.PI / 6);
 const S = 0.5;
+
+type Plane = "xy" | "xz" | "yz";
+
+/* the linear part of the transform that lays text flat on a plane */
+function planeMatrix(plane: Plane): number[] {
+  switch (plane) {
+    case "xy":
+      return [C, S, -C, S];
+    case "xz":
+      return [C, S, 0, 1];
+    case "yz":
+      return [C, -S, 0, 1];
+    default: {
+      const exhaustive: never = plane;
+      throw new Error(`Unhandled text plane: ${exhaustive}`);
+    }
+  }
+}
 /** Strokes keep their width however the figure is scaled. */
 export const SW = 'vector-effect="non-scaling-stroke"';
 
@@ -291,7 +309,7 @@ export function makeFig({
     x: number,
     y: number,
     z: number,
-    plane: "xy" | "xz" | "yz",
+    plane: Plane,
     st: TextStyle
   ) {
     const o = P(x, y, z);
@@ -305,7 +323,7 @@ export function makeFig({
       cx.font = `${st.weight || 400} ${size}px ${font}`;
       tx = r2(cx.measureText(String(str)[0]).actualBoundingBoxLeft || 0);
     }
-    const m = plane === "xy" ? [C, S, -C, S] : plane === "xz" ? [C, S, 0, 1] : [C, -S, 0, 1];
+    const m = planeMatrix(plane);
     emit(
       `<text${st.cls ? ` class="${st.cls}"` : ""} transform="matrix(${m.map((v) => r2(v * k)).join(",")},${r2(o[0])},${r2(o[1])})" font-family="${attr(font)}" font-size="${size}" letter-spacing="${st.ls || ".14em"}" fill="${st.fill || INK}" text-anchor="${st.anchor || "middle"}" text-rendering="geometricPrecision"${st.attrs ? ` ${st.attrs}` : ""}${tx ? ` x="${tx}"` : ""}${st.weight ? ` font-weight="${st.weight}"` : ""}${st.op ? ` opacity="${st.op}"` : ""}>${esc(str)}</text>`
     );
