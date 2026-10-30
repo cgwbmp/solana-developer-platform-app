@@ -30,6 +30,8 @@ function LogoBlock({ label, logos }: { label: string; logos: readonly Logo[] }) 
               alt={logo.name}
               width={logo.width}
               height={logo.height}
+              // the logo wall sits in the first viewport, so never defer it
+              loading="eager"
               unoptimized
               style={{ height: logo.height }}
             />
