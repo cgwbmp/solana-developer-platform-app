@@ -9,4 +9,8 @@ describe("workspace loading authentication", () => {
   it("does not add Clerk to unrelated public routes", async () => {
     expect(await shouldLoadClerkForPath("/docs")).toBe(false);
   });
+
+  it("keeps the Clerk client off the homepage, which reads the session on the server", async () => {
+    expect(await shouldLoadClerkForPath("/")).toBe(false);
+  });
 });
